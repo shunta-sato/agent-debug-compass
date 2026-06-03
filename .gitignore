@@ -1,0 +1,34 @@
+/target/
+/.cache/
+/.pytest_cache/
+/.idea/
+/.vscode/
+*.swp
+*.swo
+
+# Private/local agent tooling. Already tracked files are not affected by ignore.
+/.agents/
+/.codex/
+
+# Local-only private planning notes. Do not publish.
+/docs/01_development_requirements.md
+
+# Agent Debug Compass runtime artifacts are intentionally not tracked.
+/.agent-debug-compass/
+/artifacts/
+/dist/
+/demo-results/
+/dogfood-results/
+/e2e-results/
+/reports/
+/tmp/
+
+# Kernel module build outputs.
+*.ko
+*.mod
+*.mod.c
+*.o
+*.cmd
+Module.symvers
+modules.order
+kernel/adc_sensor_probe/test-results/

@@ -1,0 +1,50 @@
+# Dependency policy for adc-targetd.
+#
+# This file is intentionally conservative but not maximal. It gates dependency
+# source, license, and duplicate-version policy for release/CI use via
+# `make security-check`. Advisory scanning is delegated to cargo-audit because
+# the Rust 1.85-compatible cargo-deny version cannot parse current CVSS 4.0
+# RustSec advisories.
+
+[graph]
+targets = [
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
+]
+all-features = false
+
+[advisories]
+ignore = []
+git-fetch-with-cli = false
+
+[licenses]
+confidence-threshold = 0.93
+allow = [
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+]
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+workspace-default-features = "allow"
+external-default-features = "allow"
+deny = [
+  { crate = "openssl", reason = "prefer rustls or standard-library functionality for target tools" },
+  { crate = "openssl-sys", reason = "avoid native OpenSSL dependency in target agent tooling" },
+  { crate = "libssh2-sys", reason = "avoid native SSH dependency surface" },
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

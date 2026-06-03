@@ -1,0 +1,35 @@
+profile: pi5_basic
+sampling:
+  interval_ms: 1000
+always_on:
+  collectors:
+    - cpu
+    - memory
+    - network
+    - kmsg
+    - thermal
+    - rp1_pcie_snapshot
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 512
+triggers:
+  - name: cpu_sustained_high
+    type: threshold_duration
+    signal: cpu.total_percent
+    op: ">"
+    value: 85
+    duration_sec: 5
+    capture_profile: perf_short
+  - name: kmsg_warning_pattern
+    type: kmsg_pattern
+    severity_at_least: warning
+    patterns:
+      - warning
+      - throttling
+capture_profiles:
+  perf_short:
+    duration_sec: 10
+    collectors:
+      - perf
+      - ftrace

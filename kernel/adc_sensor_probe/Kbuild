@@ -1,0 +1,1 @@
+obj-m += adc_sensor_probe.o
