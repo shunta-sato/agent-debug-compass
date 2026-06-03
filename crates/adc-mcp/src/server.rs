@@ -32,17 +32,19 @@ use prompts::{get_prompt_sync, prompts};
 use resources::{read_resource_sync, resource_templates, resources};
 use tools::tool_definitions;
 
-const CONTROLLER_TOOLS: [&str; 27] = [
+const CONTROLLER_TOOLS: [&str; 29] = [
     "obs.status",
     "obs.doctor",
     "obs.preflight",
     "obs.snapshot",
     "obs.observe",
+    "obs.get_capabilities",
     "obs.get_agent_context",
     "obs.investigate_bug",
     "obs.start_investigation",
     "obs.continue_investigation",
     "obs.get_investigation_session",
+    "obs.record_probe_result",
     "obs.list_route_packs",
     "obs.get_evidence_index",
     "obs.get_window",
@@ -62,17 +64,19 @@ const CONTROLLER_TOOLS: [&str; 27] = [
     "obs.get_fleet_evidence",
 ];
 
-const TARGET_TOOLS: [&str; 20] = [
+const TARGET_TOOLS: [&str; 22] = [
     "obs.status",
     "obs.doctor",
     "obs.preflight",
     "obs.snapshot",
     "obs.observe",
+    "obs.get_capabilities",
     "obs.get_agent_context",
     "obs.investigate_bug",
     "obs.start_investigation",
     "obs.continue_investigation",
     "obs.get_investigation_session",
+    "obs.record_probe_result",
     "obs.list_route_packs",
     "obs.get_evidence_index",
     "obs.get_window",
@@ -170,6 +174,14 @@ struct ContinueInvestigationParams {
     open_ref_labels: Option<Vec<String>>,
     open_raw_refs: Option<Vec<String>>,
     max_ref_lines: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProbeResultParams {
+    probe_plan_id: String,
+    probe_id: String,
+    missing_fact: String,
+    hypothesis_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -459,6 +471,13 @@ impl AdcMcpServer {
                     .map(CallToolResult::structured)
                     .map_err(to_internal_error)
             }
+            "obs.get_capabilities" => {
+                let map = adc_core::detect_default_kernel_capabilities().map_err(to_mcp_error)?;
+                let report = adc_core::build_capability_report("local", &map);
+                serde_json::to_value(report)
+                    .map(CallToolResult::structured)
+                    .map_err(to_internal_error)
+            }
             "obs.investigate_bug" => {
                 let params: InvestigateBugParams = decode_arguments(request.arguments)?;
                 if self.mode == ServerMode::Target && params.fleet_run_id.is_some() {
@@ -555,6 +574,27 @@ impl AdcMcpServer {
                 )
                 .map_err(to_mcp_error)?;
                 serde_json::to_value(state)
+                    .map(CallToolResult::structured)
+                    .map_err(to_internal_error)
+            }
+            "obs.record_probe_result" => {
+                let params: ProbeResultParams = decode_arguments(request.arguments)?;
+                let data_quality = adc_core::DataQuality {
+                    missing: vec![format!(
+                        "{} unavailable in recorded probe result",
+                        params.missing_fact
+                    )],
+                    clock_confidence: "medium".to_string(),
+                    ..Default::default()
+                };
+                let result = adc_core::probe_result_for_unavailable_capability(
+                    &params.probe_plan_id,
+                    &params.probe_id,
+                    &params.hypothesis_ids.unwrap_or_default(),
+                    &params.missing_fact,
+                    &data_quality,
+                );
+                serde_json::to_value(result)
                     .map(CallToolResult::structured)
                     .map_err(to_internal_error)
             }

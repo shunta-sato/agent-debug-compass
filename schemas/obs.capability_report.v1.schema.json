@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.capability_report.v1",
+  "type": "object",
+  "required": ["schema_version", "target_id", "generated_at_unix_ms", "capabilities", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.capability_report.v1"]},
+    "target_id": {"type": "string"},
+    "generated_at_unix_ms": {"type": "integer"},
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capability_id", "status", "required_privilege", "safe_default", "reason", "data_quality"],
+        "properties": {
+          "capability_id": {"type": "string"},
+          "status": {"type": "string", "enum": ["supported", "degraded", "unavailable", "requires_privilege", "unsafe", "unknown"]},
+          "required_privilege": {"type": "string"},
+          "safe_default": {"type": "boolean"},
+          "reason": {"type": "string"},
+          "data_quality": {"type": "object"}
+        }
+      }
+    },
+    "data_quality": {"type": "object"}
+  }
+}

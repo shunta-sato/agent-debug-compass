@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.hypothesis_set.v1",
+  "type": "object",
+  "required": ["schema_version", "scope", "hypotheses", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.hypothesis_set.v1"]},
+    "scope": {"type": "string"},
+    "run_id": {"type": "string"},
+    "fleet_run_id": {"type": "string"},
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["hypothesis_id", "statement", "status", "confidence", "supports", "contradicts", "missing_evidence", "next_discriminating_probes", "claim_boundary", "data_quality"],
+        "properties": {
+          "hypothesis_id": {"type": "string"},
+          "statement": {"type": "string"},
+          "status": {"type": "string", "enum": ["open", "supported", "weakened", "contradicted", "needs_evidence", "closed_insufficient_evidence"]},
+          "confidence": {"type": "string"},
+          "supports": {"type": "array"},
+          "contradicts": {"type": "array"},
+          "missing_evidence": {"type": "array", "items": {"type": "string"}},
+          "next_discriminating_probes": {"type": "array", "items": {"type": "string"}},
+          "claim_boundary": {"type": "string", "enum": ["hypothesis_only"]},
+          "data_quality": {"type": "object"}
+        }
+      }
+    },
+    "data_quality": {"type": "object"}
+  }
+}

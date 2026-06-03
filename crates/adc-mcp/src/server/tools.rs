@@ -54,6 +54,12 @@ fn all_tool_definitions() -> Vec<Tool> {
         )
         .annotate(observation_write.clone()),
         Tool::new(
+            "obs.get_capabilities",
+            "Return a safety-aware target capability report.",
+            empty_schema(),
+        )
+        .annotate(read_only.clone()),
+        Tool::new(
             "obs.get_agent_context",
             "Return compact Agent-ready context for an existing run.",
             agent_context_schema(),
@@ -83,6 +89,12 @@ fn all_tool_definitions() -> Vec<Tool> {
             investigation_session_schema(),
         )
         .annotate(read_only.clone()),
+        Tool::new(
+            "obs.record_probe_result",
+            "Record a bounded probe result contract without executing a probe.",
+            probe_result_schema(),
+        )
+        .annotate(observation_write.clone()),
         Tool::new(
             "obs.list_route_packs",
             "Return typed investigation route packs and their required facts.",
@@ -505,6 +517,24 @@ fn agent_ref_schema() -> JsonObject {
         },
     }))
     .expect("static agent ref schema is an object")
+}
+
+fn probe_result_schema() -> JsonObject {
+    serde_json::from_value(json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["probe_plan_id", "probe_id", "missing_fact"],
+        "properties": {
+            "probe_plan_id": {"type": "string"},
+            "probe_id": {"type": "string"},
+            "missing_fact": {"type": "string"},
+            "hypothesis_ids": {
+                "type": "array",
+                "items": {"type": "string"}
+            }
+        },
+    }))
+    .expect("static probe result schema is an object")
 }
 
 fn compare_schema() -> JsonObject {

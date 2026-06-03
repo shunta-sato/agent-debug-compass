@@ -242,6 +242,22 @@ fn investigate_bug_creates_symptom_context_without_preexisting_run_id() {
         .expect("selected packs")
         .iter()
         .any(|pack| pack["domain"] == "latency_timeouts"));
+    assert_eq!(
+        context["hypothesis_set"]["schema_version"],
+        "obs.hypothesis_set.v1"
+    );
+    assert!(context["hypothesis_set"]["hypotheses"]
+        .as_array()
+        .expect("hypotheses")
+        .iter()
+        .all(|hypothesis| hypothesis["claim_boundary"] == "hypothesis_only"));
+    assert_eq!(context["probe_plan"]["schema_version"], "obs.probe_plan.v1");
+    assert!(context["probe_plan"]["candidate_probes"]
+        .as_array()
+        .expect("candidate probes")
+        .iter()
+        .all(|probe| probe["cause_neutral"] == true));
+    assert_eq!(context["safety_policy"]["default_decision"], "deny");
     assert!(context["facts"]
         .as_array()
         .expect("facts")
@@ -264,6 +280,42 @@ fn investigate_bug_creates_symptom_context_without_preexisting_run_id() {
     let rendered = String::from_utf8(output.stdout).expect("utf8");
     assert!(!rendered.to_ascii_lowercase().contains("root cause"));
     assert!(!rendered.contains("secret"));
+}
+
+#[test]
+fn investigate_probe_result_records_missing_capability_without_running_probe() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adc"))
+        .args([
+            "investigate",
+            "probe-result",
+            "--probe-plan-id",
+            "PP001",
+            "--probe-id",
+            "probe.scheduler_snapshot",
+            "--missing-fact",
+            "process.runqueue_latency",
+            "--hypothesis-id",
+            "H001",
+        ])
+        .output()
+        .expect("probe result");
+    assert!(
+        output.status.success(),
+        "probe result failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("probe result json");
+    assert_eq!(result["schema_version"], "obs.probe_result.v1");
+    assert_eq!(result["status"], "failed_missing_capability");
+    assert_eq!(result["hypothesis_updates"][0]["update"], "needs_evidence");
+    assert!(result["data_quality"]["missing"]
+        .as_array()
+        .expect("missing")
+        .iter()
+        .any(|value| value
+            .as_str()
+            .is_some_and(|text| text.contains("process.runqueue_latency"))));
 }
 
 #[test]

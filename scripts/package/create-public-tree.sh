@@ -95,7 +95,19 @@ do
   copy_path "$file"
 done
 
-for dir in crates docs demos scripts packaging profiles kernel supply-chain; do
+for dir in \
+  benchmarks \
+  crates \
+  docs \
+  demos \
+  scripts \
+  packaging \
+  profiles \
+  kernel \
+  schemas \
+  supply-chain \
+  tests/golden
+do
   copy_path "$dir"
 done
 

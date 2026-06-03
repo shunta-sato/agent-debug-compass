@@ -1,0 +1,17 @@
+{
+  "schema_version": "obs.agent_debug_benchmark_scenario.v1",
+  "scenario_id": "disk_io_pressure",
+  "symptom": "requests stall during storage IO",
+  "expected_top_hypothesis": "H001",
+  "forbidden_claim_markers": ["the cause is", "disk is proven"],
+  "requires_data_quality_attention": true,
+  "allowed_raw_ref_open_count": 2,
+  "candidate_investigation_state": {
+    "data_quality_checked": true,
+    "opened_raw_refs": ["artifact://raw/io.json"],
+    "evidence_supported_statements": ["IO evidence was checked through bounded refs."],
+    "time_to_first_useful_probe_ms": 100,
+    "hypothesis_set": {"hypotheses": [{"hypothesis_id": "H001", "claim_boundary": "hypothesis_only"}]},
+    "probe_plan": {"candidate_probes": [{"probe_id": "probe.io_config_snapshot", "safety_status": "allowed"}]}
+  }
+}

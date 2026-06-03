@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.evidence_graph.v1",
+  "type": "object",
+  "required": ["schema_version", "scope", "nodes", "edges", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.evidence_graph.v1"]},
+    "scope": {"type": "string"},
+    "nodes": {"type": "array"},
+    "edges": {"type": "array"},
+    "data_quality": {"type": "object"}
+  }
+}

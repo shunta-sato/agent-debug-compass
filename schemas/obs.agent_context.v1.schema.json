@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.agent_context.v1",
+  "type": "object",
+  "required": ["schema_version", "context_id", "target_dossier", "evidence_index", "recommended_refs", "raw_refs", "data_quality", "context_budget"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.agent_context.v1"]},
+    "context_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "fleet_run_id": {"type": "string"},
+    "target_dossier": {"type": "object"},
+    "evidence_index": {"type": "object"},
+    "recommended_refs": {"type": "array"},
+    "raw_refs": {"type": "object"},
+    "data_quality": {"type": "object"},
+    "context_budget": {"type": "object"}
+  }
+}

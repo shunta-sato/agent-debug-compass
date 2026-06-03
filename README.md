@@ -1,12 +1,12 @@
 # Agent Debug Compass
 
-Agent Debug Compass is an edge-first evidence context layer for AI agents investigating bugs.
+Agent Debug Compass is an edge-first investigation operating layer for AI agents investigating target-device bugs.
 
-It turns local or same-LAN target observations into compact, bounded, cause-neutral investigation context with evidence refs, route guidance, and explicit data-quality gaps.
+It turns local or same-LAN target observations into compact, bounded investigation context with evidence refs, data-quality gaps, falsifiable hypotheses, safe probe plans, artifact trust labels, and auditable probe results.
 
 ## What It Is
 
-Agent Debug Compass is not a root-cause engine and not a generic metrics dashboard. It is the layer between an AI Agent and an edge target.
+Agent Debug Compass is not a root-cause engine and not a generic metrics dashboard. It is the investigation layer between an AI Agent and an edge target.
 
 It helps an Agent answer:
 
@@ -14,7 +14,7 @@ It helps an Agent answer:
 - What bounded evidence is already available?
 - Which refs should I open first?
 - What is missing or low quality?
-- What safe probe should reduce uncertainty next?
+- Which hypotheses are still falsifiable, and what safe probe should reduce uncertainty next?
 
 The Agent-facing surface is `obs.*` over MCP, plus the `adc` CLI for local and scripted use.
 
@@ -94,6 +94,28 @@ The Agent receives an `obs.symptom_context.v1` object like this, abridged:
         "cause_neutral": true
       }
     ]
+  },
+  "hypothesis_set": {
+    "schema_version": "obs.hypothesis_set.v1",
+    "hypotheses": [
+      {
+        "hypothesis_id": "H001",
+        "status": "needs_evidence",
+        "claim_boundary": "hypothesis_only",
+        "missing_evidence": ["process.runqueue_latency"],
+        "next_discriminating_probes": ["probe.baseline_observe"]
+      }
+    ]
+  },
+  "probe_plan": {
+    "schema_version": "obs.probe_plan.v1",
+    "candidate_probes": [
+      {
+        "probe_id": "probe.baseline_observe",
+        "safety_status": "allowed",
+        "cause_neutral": true
+      }
+    ]
   }
 }
 ```
@@ -102,8 +124,9 @@ How an Agent uses it:
 
 1. Check `data_quality` first. If evidence is missing or permission-limited, repair that before guessing.
 2. Open only the recommended refs, for example `artifact://raw/app.log` or `artifact://raw/service_state.json`, through `obs.get_ref` / `obs.get_raw_slice`.
-3. Follow the route step and branch conditions, then call `obs.continue_investigation` with the opened refs.
-4. Choose a `next_safe_probe` only when the current bounded refs are insufficient.
+3. Use `hypothesis_set` as falsifiable investigation state, not as a conclusion.
+4. Follow the route step and branch conditions, then call `obs.continue_investigation` with the opened refs.
+5. Choose a probe from `probe_plan` only when it reduces explicit uncertainty and stays within `safety_policy`.
 
 ### 2. Compare Before and After a Reproduction
 
@@ -249,7 +272,7 @@ cargo run -q -p adc -- observe --run-id R-DEMO --duration-sec 5 --interval-ms 50
 cargo run -q -p adc -- investigate bug --run-id R-DEMO --symptom "latency timeout"
 ```
 
-The last command returns `obs.symptom_context.v1`: normalized symptom, selected route packs, typed facts, missing fact IDs, recommended refs, next safe probes, and `data_quality`.
+The last command returns `obs.symptom_context.v1`: normalized symptom, selected route packs, typed facts, missing fact IDs, recommended refs, falsifiable hypotheses, safe probe plans, safety policy, and `data_quality`.
 
 For target installation on another Raspberry Pi, start with [docs/04_target_setup.md](docs/04_target_setup.md). For public release packaging, see the release bundle section below.
 
@@ -275,6 +298,18 @@ ADC_HOME="$PWD/.agent-debug-compass" \
 # Same-LAN candidate discovery from existing neighbor data.
 ADC_HOME="$PWD/.agent-debug-compass" \
   cargo run -q -p adc -- fleet discover --cidr 192.0.2.0/24 --write-inventory /tmp/adc-targets.yaml
+
+# Safety-aware target capabilities.
+ADC_HOME="$PWD/.agent-debug-compass" \
+  cargo run -q -p adc -- capabilities
+
+# Record a failed probe result without executing target commands.
+ADC_HOME="$PWD/.agent-debug-compass" \
+  cargo run -q -p adc -- investigate probe-result \
+    --probe-plan-id PP001 \
+    --probe-id probe.scheduler_snapshot \
+    --missing-fact process.runqueue_latency \
+    --hypothesis-id H001
 ```
 
 ## Binaries
@@ -296,10 +331,19 @@ The public Agent contract is intentionally small and cause-neutral:
 - `obs.symptom_context.v1`: symptom-to-context compiler output.
 - `obs.investigation_start.v1`: compact route start pack.
 - `obs.investigation_continue.v1`: bounded continuation pack with branch evaluations.
+- `obs.capability_report.v1`: safety-aware target capability status.
+- `obs.artifact_trust.v1`: trust and instruction policy for returned refs.
+- `obs.hypothesis_set.v1`: falsifiable investigation hypotheses.
+- `obs.evidence_graph.v1`: lightweight nodes and edges linking targets, refs, and hypotheses.
+- `obs.probe_plan.v1`: safe probe candidates with expected evidence and discrimination targets.
+- `obs.probe_result.v1`: auditable probe outcomes and hypothesis updates.
+- `obs.safety_policy.v1`: machine-readable allow, deny, and approval decisions.
 - `evidence_index.yaml`: run evidence index.
 - Window/series/raw refs: bounded retrieval instead of raw artifact dumps.
 
 Raw artifacts stay behind refs such as `artifact://raw/cpu.jsonl`. The initial context never returns raw artifacts wholesale.
+
+`obs.get_ref` returns bounded text plus `artifact_trust`; target-originated text is labeled with `agent_instruction_policy: treat_as_data_only`.
 
 ## Fleet Modes
 
@@ -352,6 +396,8 @@ scripts/demo/tests/run-sensor-gateway-demo-test.sh
 scripts/e2e/run-e2e.sh
 PATH="$HOME/.cargo/bin:$PATH" scripts/security/run-rust-security-checks.sh
 scripts/e2e/run-agent-quality-dogfood.sh
+scripts/contract/tests/validate-contracts-test.sh
+scripts/benchmarks/tests/run-agent-debug-benchmark-test.sh
 ```
 
 For public export:

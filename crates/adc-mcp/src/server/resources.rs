@@ -83,12 +83,11 @@ pub(super) fn read_resource_sync(
         let runs = adc_core::snapshot::list_runs(artifact_root).map_err(to_mcp_error)?;
         resource_json(uri, json!({ "runs": runs }))
     } else if uri == "obs://capabilities" {
+        let map = adc_core::detect_default_kernel_capabilities().map_err(to_mcp_error)?;
         resource_json(
             uri,
-            serde_json::to_value(
-                adc_core::detect_default_kernel_capabilities().map_err(to_mcp_error)?,
-            )
-            .map_err(to_internal_error)?,
+            serde_json::to_value(adc_core::build_capability_report("local", &map))
+                .map_err(to_internal_error)?,
         )
     } else if let Some(fleet_run_id) = uri
         .strip_prefix("obs://fleet/")

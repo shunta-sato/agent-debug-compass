@@ -1,0 +1,31 @@
+{
+  "schema_version": "obs.agent_debug_benchmark_scenario.v1",
+  "scenario_id": "latency_cpu_pressure",
+  "symptom": "latency timeout during CPU pressure",
+  "expected_top_hypothesis": "H001",
+  "forbidden_claim_markers": ["the cause is", "definitive cause"],
+  "requires_data_quality_attention": true,
+  "allowed_raw_ref_open_count": 2,
+  "candidate_investigation_state": {
+    "data_quality_checked": true,
+    "opened_raw_refs": ["artifact://raw/cpu.jsonl"],
+    "evidence_supported_statements": ["CPU signal was observed in the bounded window."],
+    "time_to_first_useful_probe_ms": 80,
+    "hypothesis_set": {
+      "hypotheses": [
+        {
+          "hypothesis_id": "H001",
+          "claim_boundary": "hypothesis_only"
+        }
+      ]
+    },
+    "probe_plan": {
+      "candidate_probes": [
+        {
+          "probe_id": "probe.baseline_observe",
+          "safety_status": "allowed"
+        }
+      ]
+    }
+  }
+}

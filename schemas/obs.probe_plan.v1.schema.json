@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.probe_plan.v1",
+  "type": "object",
+  "required": ["schema_version", "probe_plan_id", "scope", "goal", "candidate_probes", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.probe_plan.v1"]},
+    "probe_plan_id": {"type": "string"},
+    "scope": {"type": "string"},
+    "goal": {"type": "string"},
+    "candidate_probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["probe_id", "title", "required_capabilities", "required_privilege", "safety_status", "expected_cost", "timeout_ms", "expected_evidence", "discriminates", "failure_contract", "cause_neutral"],
+        "properties": {
+          "probe_id": {"type": "string"},
+          "title": {"type": "string"},
+          "required_capabilities": {"type": "array", "items": {"type": "string"}},
+          "required_privilege": {"type": "string"},
+          "safety_status": {"type": "string"},
+          "expected_cost": {"type": "string"},
+          "timeout_ms": {"type": "integer"},
+          "expected_evidence": {"type": "array", "items": {"type": "string"}},
+          "discriminates": {"type": "array", "items": {"type": "string"}},
+          "failure_contract": {"type": "string"},
+          "cause_neutral": {"type": "boolean"}
+        }
+      }
+    },
+    "data_quality": {"type": "object"}
+  }
+}

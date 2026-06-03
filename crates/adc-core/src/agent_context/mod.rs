@@ -387,6 +387,7 @@ pub struct AgentRefResolution {
     pub total_lines: usize,
     pub truncated: bool,
     pub text: String,
+    pub artifact_trust: crate::ArtifactTrust,
     pub data_quality: DataQuality,
 }
 
@@ -1413,6 +1414,8 @@ fn resolve_fleet_agent_ref(
             all_lines.len()
         ));
     }
+    let text = lines.join("\n");
+    let data_quality_for_trust = data_quality.clone();
     Ok(AgentRefResolution {
         run_id: fleet_run_id.unwrap_or("fleet").to_string(),
         ref_uri: ref_uri.to_string(),
@@ -1421,7 +1424,13 @@ fn resolve_fleet_agent_ref(
         returned_lines: lines.len(),
         total_lines: all_lines.len(),
         truncated,
-        text: lines.join("\n"),
+        artifact_trust: crate::classify_artifact_trust(
+            ref_uri,
+            crate::content_class_for_ref("fleet_artifact", &content_type_for_path(&path)),
+            &text,
+            &data_quality_for_trust,
+        ),
+        text,
         data_quality,
     })
 }

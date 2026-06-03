@@ -38,6 +38,11 @@ Builds a release bundle with:
   scripts/e2e/tests/
     run-managed-mcp-mtls-smoke.sh
     run-managed-mcp-enrollment-kit-test.sh
+  schemas/
+  benchmarks/
+  tests/golden/
+  scripts/contract/
+  scripts/benchmarks/
 USAGE
 }
 
@@ -92,7 +97,7 @@ if [[ -e "$BUNDLE_DIR" || -e "$ARCHIVE" ]]; then
   rm -f -- "$ARCHIVE" "$ARCHIVE.sha256"
 fi
 
-mkdir -p "$BUNDLE_DIR/bin" "$BUNDLE_DIR/docs" "$BUNDLE_DIR/demos" "$BUNDLE_DIR/profiles" "$BUNDLE_DIR/packaging/systemd" "$BUNDLE_DIR/scripts/install" "$BUNDLE_DIR/scripts/demo" "$BUNDLE_DIR/scripts/security" "$BUNDLE_DIR/scripts/e2e/tests" "$BUNDLE_DIR/scripts/e2e/target"
+mkdir -p "$BUNDLE_DIR/bin" "$BUNDLE_DIR/docs" "$BUNDLE_DIR/demos" "$BUNDLE_DIR/profiles" "$BUNDLE_DIR/packaging/systemd" "$BUNDLE_DIR/scripts/install" "$BUNDLE_DIR/scripts/demo" "$BUNDLE_DIR/scripts/security" "$BUNDLE_DIR/scripts/e2e/tests" "$BUNDLE_DIR/scripts/e2e/target" "$BUNDLE_DIR/scripts/contract/tests" "$BUNDLE_DIR/scripts/benchmarks/tests" "$BUNDLE_DIR/tests/golden"
 
 for bin in adc-targetd adc adc-workload adc-demo-sensor-gateway adc-mcp adc-priv-helper; do
   install -m 0755 "$build_dir/$bin" "$BUNDLE_DIR/bin/$bin"
@@ -101,6 +106,9 @@ done
 cp -R "$ROOT_DIR/docs/." "$BUNDLE_DIR/docs/"
 cp -R "$ROOT_DIR/demos/." "$BUNDLE_DIR/demos/"
 cp -R "$ROOT_DIR/profiles/." "$BUNDLE_DIR/profiles/"
+cp -R "$ROOT_DIR/schemas" "$BUNDLE_DIR/schemas"
+cp -R "$ROOT_DIR/benchmarks" "$BUNDLE_DIR/benchmarks"
+cp -R "$ROOT_DIR/tests/golden/." "$BUNDLE_DIR/tests/golden/"
 install -m 0644 "$ROOT_DIR/packaging/systemd/adc-targetd.service" "$BUNDLE_DIR/packaging/systemd/adc-targetd.service"
 install -m 0755 "$ROOT_DIR/scripts/install/install-dev-env.sh" "$BUNDLE_DIR/scripts/install/install-dev-env.sh"
 install -m 0755 "$ROOT_DIR/scripts/install/install-managed-mcp-user-service.sh" "$BUNDLE_DIR/scripts/install/install-managed-mcp-user-service.sh"
@@ -113,6 +121,10 @@ install -m 0755 "$ROOT_DIR/scripts/install/install-target-smoke-sudoers.sh" "$BU
 install -m 0755 "$ROOT_DIR/scripts/install/install-target-smoke-ko.sh" "$BUNDLE_DIR/scripts/install/install-target-smoke-ko.sh"
 install -m 0755 "$ROOT_DIR/scripts/demo/run-sensor-gateway-demo.sh" "$BUNDLE_DIR/scripts/demo/run-sensor-gateway-demo.sh"
 install -m 0755 "$ROOT_DIR/scripts/security/run-rust-security-checks.sh" "$BUNDLE_DIR/scripts/security/run-rust-security-checks.sh"
+install -m 0755 "$ROOT_DIR/scripts/contract/validate-contracts.py" "$BUNDLE_DIR/scripts/contract/validate-contracts.py"
+install -m 0755 "$ROOT_DIR/scripts/contract/tests/validate-contracts-test.sh" "$BUNDLE_DIR/scripts/contract/tests/validate-contracts-test.sh"
+install -m 0755 "$ROOT_DIR/scripts/benchmarks/run-agent-debug-benchmark.py" "$BUNDLE_DIR/scripts/benchmarks/run-agent-debug-benchmark.py"
+install -m 0755 "$ROOT_DIR/scripts/benchmarks/tests/run-agent-debug-benchmark-test.sh" "$BUNDLE_DIR/scripts/benchmarks/tests/run-agent-debug-benchmark-test.sh"
 install -m 0755 "$ROOT_DIR/scripts/e2e/run-e2e.sh" "$BUNDLE_DIR/scripts/e2e/run-e2e.sh"
 install -m 0755 "$ROOT_DIR/scripts/e2e/run-agent-quality-dogfood.sh" "$BUNDLE_DIR/scripts/e2e/run-agent-quality-dogfood.sh"
 install -m 0755 "$ROOT_DIR/scripts/e2e/merge-target-smoke.sh" "$BUNDLE_DIR/scripts/e2e/merge-target-smoke.sh"
@@ -143,6 +155,7 @@ cat >"$BUNDLE_DIR/manifest.json" <<JSON
     "systemd service",
     "demo content and runner",
     "install, demo, security, and E2E scripts",
+    "schema registry, golden contract fixtures, and benchmark scenarios",
     "privileged target smoke sudoers installer",
     "optional KO source scaffold"
   ]

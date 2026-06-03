@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.data_quality.v1",
+  "type": "object",
+  "required": ["dropped", "drop_count", "throttled", "missing", "truncated", "clock_confidence", "notes"],
+  "properties": {
+    "dropped": {"type": "boolean"},
+    "drop_count": {"type": "integer"},
+    "throttled": {"type": "boolean"},
+    "missing": {"type": "array", "items": {"type": "string"}},
+    "truncated": {"type": "boolean"},
+    "clock_confidence": {"type": "string"},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

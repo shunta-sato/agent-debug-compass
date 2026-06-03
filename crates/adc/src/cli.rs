@@ -716,7 +716,8 @@ fn snapshot(args: &[String]) -> Result<(), String> {
 
 fn capabilities() -> Result<(), String> {
     let map = adc_core::detect_default_kernel_capabilities().map_err(|err| err.to_string())?;
-    serde_json::to_writer_pretty(std::io::stdout(), &map)
+    let report = adc_core::build_capability_report("local", &map);
+    serde_json::to_writer_pretty(std::io::stdout(), &report)
         .map_err(|err| format!("failed to serialize capabilities: {err}"))?;
     println!();
     Ok(())
@@ -1383,11 +1384,12 @@ fn investigate(args: &[String]) -> Result<(), String> {
         [cmd, rest @ ..] if cmd == "continue" => investigate_continue(rest),
         [cmd, rest @ ..] if cmd == "session" => investigate_session(rest),
         [cmd, rest @ ..] if cmd == "cleanup-sessions" => investigate_cleanup_sessions(rest),
+        [cmd, rest @ ..] if cmd == "probe-result" => investigate_probe_result(rest),
         [cmd] if cmd == "route-packs" => investigate_route_packs(),
         [scope, kind, rest @ ..] if scope == "service" => investigate_service(kind, rest),
         [cmd, rest @ ..] if cmd == "ref" => investigate_ref(rest),
         _ => Err(
-            "usage: adc investigate bug --symptom <text> [--run-id <id>|--fleet-run-id <id>|--duration-ms N] [--service-name NAME] [--inventory PATH] | investigate start (--run-id <id>|--fleet-run-id <id>) [--service-name NAME] [--inventory PATH] [--journal-lines N] [--format json|markdown] | investigate continue (--run-id <id>|--fleet-run-id <id>) --step-id <id> [--ref-label LABEL] [--ref REF] | investigate session (--run-id <id>|--fleet-run-id <id>) --session-id <id> | investigate cleanup-sessions (--run-id <id>|--fleet-run-id <id>) [--max-sessions N] [--max-age-days N] [--dry-run|--execute] | investigate route-packs | investigate service <name> [--journal-lines N] | investigate ref --ref artifact://service_investigations/... [--limit N]"
+            "usage: adc investigate bug --symptom <text> [--run-id <id>|--fleet-run-id <id>|--duration-ms N] [--service-name NAME] [--inventory PATH] | investigate start (--run-id <id>|--fleet-run-id <id>) [--service-name NAME] [--inventory PATH] [--journal-lines N] [--format json|markdown] | investigate continue (--run-id <id>|--fleet-run-id <id>) --step-id <id> [--ref-label LABEL] [--ref REF] | investigate session (--run-id <id>|--fleet-run-id <id>) --session-id <id> | investigate cleanup-sessions (--run-id <id>|--fleet-run-id <id>) [--max-sessions N] [--max-age-days N] [--dry-run|--execute] | investigate probe-result --probe-plan-id ID --probe-id ID --missing-fact FACT [--hypothesis-id H] | investigate route-packs | investigate service <name> [--journal-lines N] | investigate ref --ref artifact://service_investigations/... [--limit N]"
                 .to_string(),
         ),
     }
@@ -1633,6 +1635,34 @@ fn investigate_cleanup_sessions(args: &[String]) -> Result<(), String> {
     .map_err(|err| err.to_string())?;
     serde_json::to_writer_pretty(std::io::stdout(), &report)
         .map_err(|err| format!("failed to serialize investigation session cleanup: {err}"))?;
+    println!();
+    Ok(())
+}
+
+fn investigate_probe_result(args: &[String]) -> Result<(), String> {
+    let probe_plan_id = required_flag(args, "--probe-plan-id")?;
+    let probe_id = required_flag(args, "--probe-id")?;
+    let missing_fact = required_flag(args, "--missing-fact")?;
+    let hypothesis_ids = flag_values(args, "--hypothesis-id")
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let data_quality = adc_core::DataQuality {
+        missing: vec![format!(
+            "{missing_fact} unavailable in recorded probe result"
+        )],
+        clock_confidence: "medium".to_string(),
+        ..Default::default()
+    };
+    let result = adc_core::probe_result_for_unavailable_capability(
+        probe_plan_id,
+        probe_id,
+        &hypothesis_ids,
+        missing_fact,
+        &data_quality,
+    );
+    serde_json::to_writer_pretty(std::io::stdout(), &result)
+        .map_err(|err| format!("failed to serialize probe result: {err}"))?;
     println!();
     Ok(())
 }
