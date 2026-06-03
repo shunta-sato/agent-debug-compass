@@ -325,12 +325,15 @@ ADC_HOME="$PWD/.agent-debug-compass" \
 
 ## Agent Surface
 
-The public Agent contract is intentionally small and cause-neutral:
+The first-read Agent surface remains small and cause-neutral:
 
 - `obs.agent_context.v1`: first-read target/run/fleet context.
 - `obs.symptom_context.v1`: symptom-to-context compiler output.
 - `obs.investigation_start.v1`: compact route start pack.
 - `obs.investigation_continue.v1`: bounded continuation pack with branch evaluations.
+
+The investigation operating layer adds separate versioned contracts for capability, artifact trust, hypotheses, evidence graph, probes, and safety policy:
+
 - `obs.capability_report.v1`: safety-aware target capability status.
 - `obs.artifact_trust.v1`: trust and instruction policy for returned refs.
 - `obs.hypothesis_set.v1`: falsifiable investigation hypotheses.

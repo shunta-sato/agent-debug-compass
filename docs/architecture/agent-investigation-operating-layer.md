@@ -328,7 +328,7 @@ Includes:
       "next_discriminating_probes": [
         "probe.scheduler_snapshot"
       ],
-      "root_cause_claim": false,
+      "claim_boundary": "hypothesis_only",
       "data_quality": {
         "missing": [],
         "notes": []
@@ -422,13 +422,13 @@ The MVP evidence graph should remain lightweight. It should not require a graph 
   "schema_version": "obs.probe_result.v1",
   "probe_id": "probe.scheduler_snapshot",
   "probe_plan_id": "PP001",
-  "status": "completed",
-  "produced_refs": [
-    {
-      "label": "scheduler_snapshot",
-      "raw_ref": "artifact://raw/scheduler_snapshot.json"
-    }
-  ],
+  "result_kind": "not_executed_missing_capability",
+  "executor": "adc",
+  "executed": false,
+  "safety_decision": "deny",
+  "capability_status": "unavailable",
+  "status": "failed_missing_capability",
+  "produced_refs": [],
   "produced_facts": [
     {
       "fact_id": "process.runqueue_latency",

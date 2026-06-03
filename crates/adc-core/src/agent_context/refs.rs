@@ -13,8 +13,12 @@ pub fn resolve_agent_ref(
     if ref_uri.starts_with("artifact://raw/") {
         let slice = crate::read_raw_slice(artifact_root, run_id, ref_uri, limit)?;
         let text = slice.lines.join("\n");
-        let artifact_trust =
-            crate::classify_artifact_trust(ref_uri, "log", &text, &slice.data_quality);
+        let artifact_trust = crate::classify_artifact_trust(
+            ref_uri,
+            crate::content_class_for_raw_ref(ref_uri),
+            &text,
+            &slice.data_quality,
+        );
         return Ok(AgentRefResolution {
             run_id: run_id.to_string(),
             ref_uri: ref_uri.to_string(),

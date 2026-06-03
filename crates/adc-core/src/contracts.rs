@@ -10,6 +10,148 @@ use crate::{
     CompiledInvestigationRoute, DataQuality, KernelCapabilityMap, NormalizedSymptom, SafeProbePack,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityStatus {
+    Supported,
+    Degraded,
+    Unavailable,
+    RequiresPrivilege,
+    Unsafe,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentClass {
+    Log,
+    Journal,
+    DomainEvent,
+    Config,
+    Telemetry,
+    Trace,
+    MetricSeries,
+    ServiceState,
+    ProcessSnapshot,
+    Manifest,
+    EvidenceIndex,
+    Window,
+    Context,
+    Summary,
+    Artifact,
+    Binary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrustLevel {
+    TrustedSystem,
+    TrustedAdcGenerated,
+    UntrustedTargetText,
+    UntrustedUserProvidedText,
+    OpaqueArtifact,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentInstructionPolicy {
+    TreatAsDataOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScanStatus {
+    Scanned,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptInjectionSeverity {
+    None,
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HypothesisStatus {
+    Open,
+    Supported,
+    Weakened,
+    Contradicted,
+    NeedsEvidence,
+    ClosedInsufficientEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfidenceLevel {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaimBoundary {
+    HypothesisOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceStrength {
+    Weak,
+    Medium,
+    Strong,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeSafetyStatus {
+    Allowed,
+    RequiresApproval,
+    Denied,
+    Unsafe,
+    Degraded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeResultStatus {
+    Completed,
+    FailedMissingCapability,
+    FailedPolicyDenied,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeResultKind {
+    NotExecutedMissingCapability,
+    NotExecutedPolicyDenied,
+    Executed,
+    ManuallyRecorded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProbeExecutor {
+    Adc,
+    Agent,
+    Operator,
+    External,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SafetyDecision {
+    Allow,
+    Deny,
+    RequiresHumanApproval,
+    AllowOnlyOnTrustedLan,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CapabilityReport {
     pub schema_version: String,
@@ -22,7 +164,7 @@ pub struct CapabilityReport {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CapabilityEntry {
     pub capability_id: String,
-    pub status: String,
+    pub status: CapabilityStatus,
     pub required_privilege: String,
     pub safe_default: bool,
     pub reason: String,
@@ -33,9 +175,9 @@ pub struct CapabilityEntry {
 pub struct ArtifactTrust {
     pub schema_version: String,
     pub raw_ref: String,
-    pub content_class: String,
-    pub trust_level: String,
-    pub agent_instruction_policy: String,
+    pub content_class: ContentClass,
+    pub trust_level: TrustLevel,
+    pub agent_instruction_policy: AgentInstructionPolicy,
     pub secret_scan: SecretScanResult,
     pub prompt_injection_scan: PromptInjectionScanResult,
     pub data_quality: DataQuality,
@@ -43,16 +185,16 @@ pub struct ArtifactTrust {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SecretScanResult {
-    pub status: String,
+    pub status: ScanStatus,
     pub redaction_applied: bool,
     pub suspected_secret_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PromptInjectionScanResult {
-    pub status: String,
+    pub status: ScanStatus,
     pub markers: Vec<String>,
-    pub severity: String,
+    pub severity: PromptInjectionSeverity,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,13 +221,13 @@ pub struct HypothesisSet {
 pub struct Hypothesis {
     pub hypothesis_id: String,
     pub statement: String,
-    pub status: String,
-    pub confidence: String,
+    pub status: HypothesisStatus,
+    pub confidence: ConfidenceLevel,
     pub supports: Vec<EvidenceSupport>,
     pub contradicts: Vec<EvidenceSupport>,
     pub missing_evidence: Vec<String>,
     pub next_discriminating_probes: Vec<String>,
-    pub claim_boundary: String,
+    pub claim_boundary: ClaimBoundary,
     pub data_quality: DataQuality,
 }
 
@@ -93,7 +235,7 @@ pub struct Hypothesis {
 pub struct EvidenceSupport {
     pub fact_id: String,
     pub raw_ref: String,
-    pub strength: String,
+    pub strength: EvidenceStrength,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -152,7 +294,7 @@ pub struct ProbePlanCandidate {
     pub title: String,
     pub required_capabilities: Vec<String>,
     pub required_privilege: String,
-    pub safety_status: String,
+    pub safety_status: ProbeSafetyStatus,
     pub expected_cost: String,
     pub timeout_ms: u64,
     pub expected_evidence: Vec<String>,
@@ -166,7 +308,12 @@ pub struct ProbeResult {
     pub schema_version: String,
     pub probe_id: String,
     pub probe_plan_id: String,
-    pub status: String,
+    pub result_kind: ProbeResultKind,
+    pub executor: ProbeExecutor,
+    pub executed: bool,
+    pub safety_decision: SafetyDecision,
+    pub capability_status: CapabilityStatus,
+    pub status: ProbeResultStatus,
     pub produced_refs: Vec<ProbeProducedRef>,
     pub produced_facts: Vec<ProbeProducedFact>,
     pub hypothesis_updates: Vec<ProbeHypothesisUpdate>,
@@ -189,7 +336,7 @@ pub struct ProbeProducedFact {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProbeHypothesisUpdate {
     pub hypothesis_id: String,
-    pub update: String,
+    pub update: HypothesisStatus,
     pub reason: String,
 }
 
@@ -197,7 +344,7 @@ pub struct ProbeHypothesisUpdate {
 pub struct SafetyPolicy {
     pub schema_version: String,
     pub policy_id: String,
-    pub default_decision: String,
+    pub default_decision: SafetyDecision,
     pub rules: Vec<SafetyPolicyRule>,
     pub data_quality: DataQuality,
 }
@@ -205,16 +352,15 @@ pub struct SafetyPolicy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SafetyPolicyRule {
     pub operation: String,
-    pub decision: String,
+    pub decision: SafetyDecision,
     pub constraints: BTreeMap<String, Value>,
 }
 
 pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> CapabilityReport {
-    let mut capabilities =
-        vec![
+    let mut capabilities = vec![
         capability(
             "linux.proc.cpu",
-            "supported",
+            CapabilityStatus::Supported,
             "none",
             true,
             "available through bounded /proc/stat observation",
@@ -222,7 +368,7 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
         ),
         capability(
             "linux.proc.memory",
-            "supported",
+            CapabilityStatus::Supported,
             "none",
             true,
             "available through bounded /proc/meminfo observation",
@@ -230,7 +376,7 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
         ),
         capability(
             "linux.proc.network",
-            "supported",
+            CapabilityStatus::Supported,
             "none",
             true,
             "available through bounded /proc/net/dev observation",
@@ -238,7 +384,11 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
         ),
         capability(
             "kernel.ftrace",
-            kernel_write_status(map.ftrace_available, map.root_access, map.tracefs_path.is_some()),
+            kernel_write_status(
+                map.ftrace_available,
+                map.root_access,
+                map.tracefs_path.is_some(),
+            ),
             "root_or_tracefs_group",
             false,
             if map.ftrace_available {
@@ -250,7 +400,11 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
         ),
         capability(
             "kernel.kprobe",
-            kernel_write_status(map.kprobe_available, map.root_access, map.tracefs_path.is_some()),
+            kernel_write_status(
+                map.kprobe_available,
+                map.root_access,
+                map.tracefs_path.is_some(),
+            ),
             "root_or_tracefs_group",
             false,
             if map.kprobe_available {
@@ -281,12 +435,12 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
             "kernel.ebpf",
             if map.ebpf_available {
                 if map.root_access {
-                    "supported"
+                    CapabilityStatus::Supported
                 } else {
-                    "requires_privilege"
+                    CapabilityStatus::RequiresPrivilege
                 }
             } else {
-                "unavailable"
+                CapabilityStatus::Unavailable
             },
             "root_or_bpf_policy",
             false,
@@ -300,9 +454,9 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
         capability(
             "edge.thermal",
             if map.thermal_zones.is_empty() {
-                "unavailable"
+                CapabilityStatus::Unavailable
             } else {
-                "supported"
+                CapabilityStatus::Supported
             },
             "none",
             true,
@@ -316,9 +470,9 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
         capability(
             "edge.pci",
             if map.pci_devices.is_empty() {
-                "unavailable"
+                CapabilityStatus::Unavailable
             } else {
-                "supported"
+                CapabilityStatus::Supported
             },
             "none",
             true,
@@ -332,9 +486,9 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
         capability(
             "target.root_access",
             if map.root_access {
-                "supported"
+                CapabilityStatus::Supported
             } else {
-                "unavailable"
+                CapabilityStatus::RequiresPrivilege
             },
             "root",
             false,
@@ -343,14 +497,6 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
             } else {
                 "current process is not running as root"
             },
-            &map.data_quality,
-        ),
-        capability(
-            "target.firmware_flash",
-            "unsafe",
-            "root_or_vendor_tool",
-            false,
-            "not exposed by default; disruptive operations require an explicit external workflow",
             &map.data_quality,
         ),
     ];
@@ -367,7 +513,7 @@ pub fn build_capability_report(target_id: &str, map: &KernelCapabilityMap) -> Ca
 
 pub fn classify_artifact_trust(
     raw_ref: &str,
-    content_class: &str,
+    content_class: ContentClass,
     text: &str,
     data_quality: &DataQuality,
 ) -> ArtifactTrust {
@@ -375,20 +521,20 @@ pub fn classify_artifact_trust(
     ArtifactTrust {
         schema_version: "obs.artifact_trust.v1".to_string(),
         raw_ref: raw_ref.to_string(),
-        content_class: content_class.to_string(),
-        trust_level: trust_level_for_content_class(content_class).to_string(),
-        agent_instruction_policy: "treat_as_data_only".to_string(),
+        content_class,
+        trust_level: trust_level_for_content_class(content_class),
+        agent_instruction_policy: AgentInstructionPolicy::TreatAsDataOnly,
         secret_scan: SecretScanResult {
-            status: "scanned".to_string(),
-            redaction_applied: text.contains("[REDACTED]"),
+            status: ScanStatus::Scanned,
+            redaction_applied: redaction_applied(text),
             suspected_secret_count: suspected_secret_count(text),
         },
         prompt_injection_scan: PromptInjectionScanResult {
-            status: "scanned".to_string(),
+            status: ScanStatus::Scanned,
             severity: if markers.is_empty() {
-                "none".to_string()
+                PromptInjectionSeverity::None
             } else {
-                "medium".to_string()
+                PromptInjectionSeverity::Medium
             },
             markers,
         },
@@ -396,23 +542,53 @@ pub fn classify_artifact_trust(
     }
 }
 
-pub fn content_class_for_ref(ref_kind: &str, content_type: &str) -> &'static str {
+pub fn content_class_for_raw_ref(raw_ref: &str) -> ContentClass {
+    let path = raw_ref.trim_start_matches("artifact://raw/");
+    match path {
+        "app.log" => ContentClass::Log,
+        "journald.jsonl" => ContentClass::Journal,
+        "domain_events.jsonl" => ContentClass::DomainEvent,
+        "config_redacted.txt" => ContentClass::Config,
+        "otlp_metrics.json" => ContentClass::Telemetry,
+        "perfetto_trace.json" => ContentClass::Trace,
+        "service_state.json" => ContentClass::ServiceState,
+        "process_snapshot.json" => ContentClass::ProcessSnapshot,
+        "cpu.jsonl" | "memory.jsonl" | "network.jsonl" | "net_dev.jsonl" => {
+            ContentClass::MetricSeries
+        }
+        _ if path.ends_with(".jsonl")
+            && (path.contains("cpu") || path.contains("memory") || path.contains("network")) =>
+        {
+            ContentClass::MetricSeries
+        }
+        _ if path.ends_with(".log") => ContentClass::Log,
+        _ if path.ends_with(".jsonl") => ContentClass::DomainEvent,
+        _ if path.ends_with(".json") => ContentClass::Telemetry,
+        _ => ContentClass::Artifact,
+    }
+}
+
+pub fn content_class_for_ref(ref_kind: &str, content_type: &str) -> ContentClass {
     if ref_kind.contains("journal") {
-        "journal"
+        ContentClass::Journal
     } else if ref_kind.contains("context") {
-        "context"
+        ContentClass::Context
     } else if ref_kind.contains("manifest") {
-        "manifest"
+        ContentClass::Manifest
     } else if ref_kind.contains("window") {
-        "window"
+        ContentClass::Window
     } else if ref_kind.contains("evidence") {
-        "evidence_index"
-    } else if content_type.contains("jsonl") || content_type.contains("text") {
-        "log"
+        ContentClass::EvidenceIndex
+    } else if ref_kind.contains("service") {
+        ContentClass::ServiceState
+    } else if content_type.contains("jsonl") {
+        ContentClass::DomainEvent
+    } else if content_type.contains("text") {
+        ContentClass::Log
     } else if content_type.contains("yaml") {
-        "summary"
+        ContentClass::Summary
     } else {
-        "artifact"
+        ContentClass::Artifact
     }
 }
 
@@ -456,28 +632,28 @@ pub fn default_rootless_safety_policy(data_quality: &DataQuality) -> SafetyPolic
     SafetyPolicy {
         schema_version: "obs.safety_policy.v1".to_string(),
         policy_id: "default-rootless-lab-policy".to_string(),
-        default_decision: "deny".to_string(),
+        default_decision: SafetyDecision::Deny,
         rules: vec![
             rule(
                 "read_bounded_artifact",
-                "allow",
+                SafetyDecision::Allow,
                 [("max_lines".to_string(), json!(1000))]
                     .into_iter()
                     .collect(),
             ),
-            rule("observe_rootless", "allow", BTreeMap::new()),
+            rule("observe_rootless", SafetyDecision::Allow, BTreeMap::new()),
             rule(
                 "managed_mcp_plain_http",
-                "allow_only_on_trusted_lan",
+                SafetyDecision::AllowOnlyOnTrustedLan,
                 BTreeMap::new(),
             ),
             rule(
                 "restart_service",
-                "requires_human_approval",
+                SafetyDecision::RequiresHumanApproval,
                 BTreeMap::new(),
             ),
-            rule("firmware_flash", "deny", BTreeMap::new()),
-            rule("arbitrary_shell", "deny", BTreeMap::new()),
+            rule("firmware_flash", SafetyDecision::Deny, BTreeMap::new()),
+            rule("arbitrary_shell", SafetyDecision::Deny, BTreeMap::new()),
         ],
         data_quality: data_quality.clone(),
     }
@@ -494,7 +670,12 @@ pub fn probe_result_for_unavailable_capability(
         schema_version: "obs.probe_result.v1".to_string(),
         probe_id: probe_id.to_string(),
         probe_plan_id: probe_plan_id.to_string(),
-        status: "failed_missing_capability".to_string(),
+        result_kind: ProbeResultKind::NotExecutedMissingCapability,
+        executor: ProbeExecutor::Adc,
+        executed: false,
+        safety_decision: SafetyDecision::Deny,
+        capability_status: CapabilityStatus::Unavailable,
+        status: ProbeResultStatus::FailedMissingCapability,
         produced_refs: Vec::new(),
         produced_facts: vec![ProbeProducedFact {
             fact_id: missing_fact.to_string(),
@@ -506,7 +687,7 @@ pub fn probe_result_for_unavailable_capability(
             .iter()
             .map(|hypothesis_id| ProbeHypothesisUpdate {
                 hypothesis_id: hypothesis_id.clone(),
-                update: "needs_evidence".to_string(),
+                update: HypothesisStatus::NeedsEvidence,
                 reason:
                     "The probe did not produce the requested fact because a capability was missing."
                         .to_string(),
@@ -537,7 +718,7 @@ fn hypothesis_set_for(
                 .map(|fact_id| EvidenceSupport {
                     fact_id: fact_id.clone(),
                     raw_ref: suggested_support_ref(pack.suggested_refs.first()),
-                    strength: "weak".to_string(),
+                    strength: EvidenceStrength::Weak,
                 })
                 .collect::<Vec<_>>();
             let next_probes = probes
@@ -546,20 +727,24 @@ fn hypothesis_set_for(
                 .map(probe_id_for_pack)
                 .collect::<Vec<_>>();
             let status = if pack.missing_fact_ids.is_empty() {
-                "open"
+                HypothesisStatus::Open
             } else {
-                "needs_evidence"
+                HypothesisStatus::NeedsEvidence
             };
             Hypothesis {
                 hypothesis_id: format!("H{:03}", index + 1),
                 statement: hypothesis_statement(&pack.domain, &symptom.normalized),
-                status: status.to_string(),
-                confidence: if supports.is_empty() { "low" } else { "medium" }.to_string(),
+                status,
+                confidence: if supports.is_empty() {
+                    ConfidenceLevel::Low
+                } else {
+                    ConfidenceLevel::Medium
+                },
                 supports,
                 contradicts: Vec::new(),
                 missing_evidence: pack.missing_fact_ids.clone(),
                 next_discriminating_probes: next_probes,
-                claim_boundary: "hypothesis_only".to_string(),
+                claim_boundary: ClaimBoundary::HypothesisOnly,
                 data_quality: data_quality.clone(),
             }
         })
@@ -570,13 +755,13 @@ fn hypothesis_set_for(
             hypothesis_id: "H001".to_string(),
             statement: "No falsifiable hypothesis is available from the current evidence."
                 .to_string(),
-            status: "closed_insufficient_evidence".to_string(),
-            confidence: "low".to_string(),
+            status: HypothesisStatus::ClosedInsufficientEvidence,
+            confidence: ConfidenceLevel::Low,
             supports: Vec::new(),
             contradicts: Vec::new(),
             missing_evidence: route.missing_fact_ids.clone(),
             next_discriminating_probes: probes.iter().map(probe_id_for_pack).collect(),
-            claim_boundary: "hypothesis_only".to_string(),
+            claim_boundary: ClaimBoundary::HypothesisOnly,
             data_quality: data_quality.clone(),
         });
     }
@@ -601,6 +786,7 @@ fn evidence_graph_for(
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut seen_nodes = BTreeSet::new();
+    let graph_scope = graph_scope_key(scope, run_id, fleet_run_id);
 
     for target_id in &route.target_ids {
         push_node(
@@ -618,7 +804,7 @@ fn evidence_graph_for(
     }
 
     for hypothesis in &hypothesis_set.hypotheses {
-        let hypothesis_node = format!("hypothesis:{}", hypothesis.hypothesis_id);
+        let hypothesis_node = format!("hypothesis:{graph_scope}:{}", hypothesis.hypothesis_id);
         push_node(
             &mut nodes,
             &mut seen_nodes,
@@ -632,7 +818,7 @@ fn evidence_graph_for(
             },
         );
         for support in &hypothesis.supports {
-            let ref_node = format!("ref:{}", sanitize_node_id(&support.raw_ref));
+            let ref_node = format!("ref:{graph_scope}:{}", sanitize_node_id(&support.raw_ref));
             push_node(
                 &mut nodes,
                 &mut seen_nodes,
@@ -649,7 +835,7 @@ fn evidence_graph_for(
                 from: ref_node.clone(),
                 to: hypothesis_node.clone(),
                 kind: "supports".to_string(),
-                strength: Some(support.strength.clone()),
+                strength: Some(serialized_enum(&support.strength)),
             });
             for target_id in &route.target_ids {
                 edges.push(EvidenceGraphEdge {
@@ -704,11 +890,10 @@ fn probe_plan_for(
                 required_capabilities: probe.capability_requirements.clone(),
                 required_privilege: probe.required_privilege.clone(),
                 safety_status: if probe.required_privilege == "none" {
-                    "allowed"
+                    ProbeSafetyStatus::Allowed
                 } else {
-                    "requires_approval"
-                }
-                .to_string(),
+                    ProbeSafetyStatus::RequiresApproval
+                },
                 expected_cost: probe.expected_cost.clone(),
                 timeout_ms: probe.timeout_ms,
                 expected_evidence: probe.emitted_fact_ids.clone(),
@@ -723,7 +908,7 @@ fn probe_plan_for(
 
 fn capability(
     capability_id: &str,
-    status: &str,
+    status: CapabilityStatus,
     required_privilege: &str,
     safe_default: bool,
     reason: &str,
@@ -731,7 +916,7 @@ fn capability(
 ) -> CapabilityEntry {
     CapabilityEntry {
         capability_id: capability_id.to_string(),
-        status: status.to_string(),
+        status,
         required_privilege: required_privilege.to_string(),
         safe_default,
         reason: reason.to_string(),
@@ -739,25 +924,29 @@ fn capability(
     }
 }
 
-fn kernel_write_status(available: bool, root_access: bool, tracefs_visible: bool) -> &'static str {
+fn kernel_write_status(
+    available: bool,
+    root_access: bool,
+    tracefs_visible: bool,
+) -> CapabilityStatus {
     if available && root_access {
-        "supported"
+        CapabilityStatus::Supported
     } else if available {
-        "requires_privilege"
+        CapabilityStatus::RequiresPrivilege
     } else if tracefs_visible {
-        "degraded"
+        CapabilityStatus::Degraded
     } else {
-        "unavailable"
+        CapabilityStatus::Unavailable
     }
 }
 
-fn perf_status(map: &KernelCapabilityMap) -> &'static str {
-    if map.perf_available {
-        "supported"
+fn perf_status(map: &KernelCapabilityMap) -> CapabilityStatus {
+    if map.perf_available && map.root_access {
+        CapabilityStatus::Supported
     } else if map.perf_event_paranoid.is_some() {
-        "requires_privilege"
+        CapabilityStatus::RequiresPrivilege
     } else {
-        "unknown"
+        CapabilityStatus::Unknown
     }
 }
 
@@ -768,12 +957,30 @@ fn now_unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn trust_level_for_content_class(content_class: &str) -> &'static str {
+fn trust_level_for_content_class(content_class: ContentClass) -> TrustLevel {
     match content_class {
-        "manifest" | "evidence_index" | "window" | "context" | "summary" => "target_observation",
-        "binary" => "binary_or_opaque",
-        _ => "untrusted_target_text",
+        ContentClass::Manifest
+        | ContentClass::EvidenceIndex
+        | ContentClass::Window
+        | ContentClass::Context
+        | ContentClass::Summary
+        | ContentClass::ServiceState
+        | ContentClass::ProcessSnapshot
+        | ContentClass::MetricSeries
+        | ContentClass::Telemetry
+        | ContentClass::Trace => TrustLevel::TrustedAdcGenerated,
+        ContentClass::Binary => TrustLevel::OpaqueArtifact,
+        ContentClass::Log
+        | ContentClass::Journal
+        | ContentClass::DomainEvent
+        | ContentClass::Config => TrustLevel::UntrustedTargetText,
+        ContentClass::Artifact => TrustLevel::OpaqueArtifact,
     }
+}
+
+fn redaction_applied(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    text.contains("[REDACTED]") || lower.contains("[redacted]") || lower.contains("<redacted>")
 }
 
 fn suspected_secret_count(text: &str) -> usize {
@@ -831,10 +1038,34 @@ fn overlaps(left: &[String], right: &[String]) -> bool {
     left.iter().any(|value| right.contains(value))
 }
 
-fn rule(operation: &str, decision: &str, constraints: BTreeMap<String, Value>) -> SafetyPolicyRule {
+fn graph_scope_key(scope: &str, run_id: Option<&str>, fleet_run_id: Option<&str>) -> String {
+    if let Some(run_id) = run_id {
+        format!("run:{}", sanitize_node_id(run_id))
+    } else if let Some(fleet_run_id) = fleet_run_id {
+        format!("fleet:{}", sanitize_node_id(fleet_run_id))
+    } else {
+        sanitize_node_id(scope)
+    }
+}
+
+fn serialized_enum<T>(value: &T) -> String
+where
+    T: Serialize,
+{
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn rule(
+    operation: &str,
+    decision: SafetyDecision,
+    constraints: BTreeMap<String, Value>,
+) -> SafetyPolicyRule {
     SafetyPolicyRule {
         operation: operation.to_string(),
-        decision: decision.to_string(),
+        decision,
         constraints,
     }
 }

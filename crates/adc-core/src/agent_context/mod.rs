@@ -200,6 +200,7 @@ pub struct OpenedRefSummary {
     pub raw_ref: String,
     pub ref_kind: String,
     pub content_type: String,
+    pub artifact_trust: crate::ArtifactTrust,
     pub summary: String,
     pub item_count: usize,
     pub truncated: bool,
@@ -1130,6 +1131,11 @@ fn build_continuation_pack(
                 opened_refs.push(summary);
             }
             Err(err) => {
+                let unavailable_quality = DataQuality {
+                    clock_confidence: "medium".to_string(),
+                    missing: vec![format!("selected ref unavailable: {}", reference.raw_ref)],
+                    ..Default::default()
+                };
                 data_quality.missing.push(format!(
                     "{}: failed to open {}: {err}",
                     reference.label, reference.raw_ref
@@ -1139,14 +1145,16 @@ fn build_continuation_pack(
                     raw_ref: reference.raw_ref.clone(),
                     ref_kind: "unavailable".to_string(),
                     content_type: "text/plain".to_string(),
+                    artifact_trust: crate::classify_artifact_trust(
+                        &reference.raw_ref,
+                        crate::ContentClass::Artifact,
+                        "",
+                        &unavailable_quality,
+                    ),
                     summary: "selected ref was unavailable; see data_quality".to_string(),
                     item_count: 0,
                     truncated: false,
-                    data_quality: DataQuality {
-                        clock_confidence: "medium".to_string(),
-                        missing: vec![format!("selected ref unavailable: {}", reference.raw_ref)],
-                        ..Default::default()
-                    },
+                    data_quality: unavailable_quality,
                     facts: Vec::new(),
                     text: None,
                 });
@@ -1357,6 +1365,7 @@ fn open_continuation_ref(
         raw_ref: reference.raw_ref.clone(),
         ref_kind: resolution.ref_kind,
         content_type: resolution.content_type,
+        artifact_trust: resolution.artifact_trust,
         summary,
         item_count: resolution.returned_lines,
         truncated: resolution.truncated,

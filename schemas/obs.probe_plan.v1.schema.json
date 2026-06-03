@@ -18,7 +18,7 @@
           "title": {"type": "string"},
           "required_capabilities": {"type": "array", "items": {"type": "string"}},
           "required_privilege": {"type": "string"},
-          "safety_status": {"type": "string"},
+          "safety_status": {"type": "string", "enum": ["allowed", "requires_approval", "denied", "unsafe", "degraded"]},
           "expected_cost": {"type": "string"},
           "timeout_ms": {"type": "integer"},
           "expected_evidence": {"type": "array", "items": {"type": "string"}},

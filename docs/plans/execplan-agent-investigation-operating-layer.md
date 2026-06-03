@@ -374,7 +374,7 @@ Mitigation:
 - Defer plugin SDK until after initial contracts.
 - Require plugins to declare output schemas, capability requirements, safety implications, and data-quality contracts.
 
-## Done Definition
+## Overall Done Definition
 
 This ExecPlan is complete when:
 
@@ -385,3 +385,17 @@ This ExecPlan is complete when:
 5. probe plans and results are contract-backed and safety-aware,
 6. an initial benchmark measures Agent debugging quality,
 7. no new feature requires Agent-facing root-cause claims.
+
+## PR 1 Done Definition
+
+The first implementation PR is complete when:
+
+1. the architecture direction and ExecPlan are documented in English,
+2. `schemas/` contains the initial contract schemas used by current CLI/MCP outputs,
+3. `tests/golden/` contains matching minimal fixtures,
+4. the contract test runner validates the schema/fixture set,
+5. contract vocabulary is enum-constrained in Rust and JSON Schema,
+6. README separates the small first-read surface from the broader investigation contract set,
+7. CLI help, MCP tools, README examples, and golden fixtures describe the same implemented surface,
+8. artifact trust metadata is returned whenever bounded refs are opened for Agent-facing investigation output,
+9. probe results distinguish executed results from non-executed capability or policy outcomes.
