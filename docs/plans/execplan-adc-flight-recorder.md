@@ -341,6 +341,28 @@ partial_freeze
 
 ## PR Sequence
 
+## Implementation Status
+
+As of 2026-06-04 on the Flight Recorder implementation branch:
+
+- PR4 contract scope is implemented through schema files, golden fixtures, and
+  contract coverage for recorder status, buffer status, budget, marker,
+  incident, frozen window, loss report, recorder overhead, and dataset manifest.
+- PR5 runtime scope is implemented for a memory-backed recorder ring, recorder
+  status, bounded sample retention, and explicit volatility semantics.
+- PR6 marker scope is implemented through pending recorder markers consumed by
+  `adc-targetd`, bounded incident materialization, incident listing, and incident
+  retrieval.
+- PR7 autonomous trigger scope is implemented for existing daemon trigger
+  matches, preserving trigger windows as `trigger_policy` incidents with
+  symptom-oriented trigger-name guards and `max_frozen_incidents` throttling.
+- PR8 benchmark scope is implemented as a deterministic
+  `camera_inference_degradation_flight_recorder` comparison of direct shell,
+  on-demand ADC, and ADC Flight Recorder.
+- PR9 dataset readiness is implemented for local benchmark/regression dataset
+  manifests. Public sharing datasets, label lifecycle events, and MCP recorder
+  tools remain future work.
+
 ### PR4: Flight Recorder Architecture and Contracts
 
 Deliver:

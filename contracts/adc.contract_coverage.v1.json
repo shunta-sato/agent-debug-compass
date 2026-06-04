@@ -111,6 +111,13 @@
       "coverage_levels": ["static"]
     },
     {
+      "contract": "obs.dataset_manifest.v1",
+      "schema": "schemas/obs.dataset_manifest.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.dataset_manifest.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.dataset_manifest.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli"]
+    },
+    {
       "contract": "obs.capability_report.v1",
       "schema": "schemas/obs.capability_report.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.capability_report.v1.min.json"],

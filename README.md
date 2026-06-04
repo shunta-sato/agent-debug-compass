@@ -139,6 +139,24 @@ adc snapshot --run-id R-AFTER
 adc compare --before R-BEFORE --after R-AFTER
 ```
 
+### 3. Preserve a Delayed Incident Window
+
+Flight Recorder keeps an ultra-light memory ring in `adc-targetd`. A marker or
+symptom trigger materializes a bounded incident bundle with retained samples,
+loss semantics, and dataset-ready refs.
+
+```bash
+adc arm --profile pi5_basic
+adc-targetd --service-for-ms 1000 &
+adc recorder mark --symptom "camera frame drop observed around now"
+adc recorder incidents
+adc recorder incident get --incident-id INC-marker-...
+adc recorder export-dataset --selector profile=camera_inference_degradation
+```
+
+The recorder does not claim a cause. It preserves the Tx-adjacent evidence that
+would be unavailable to an Agent that starts direct shell inspection at Ty.
+
 The output contains bounded deltas and refs:
 
 ```json

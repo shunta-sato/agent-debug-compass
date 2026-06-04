@@ -21,7 +21,7 @@ pub fn print_help_for(args: &[String]) {
             "Usage: adc fleet <init|invite|enroll|enroll-kit|targets|discover|preflight|observe|snapshot|capture|evidence>"
         ),
         [cmd, ..] if cmd == "recorder" => println!(
-            "Usage: adc recorder status\n       adc recorder mark --symptom TEXT [--incident-id ID] [--marker-id ID]\n       adc recorder incidents\n       adc recorder incident get --incident-id ID"
+            "Usage: adc recorder status\n       adc recorder mark --symptom TEXT [--marker-id ID]\n       adc recorder incidents\n       adc recorder incident get --incident-id ID\n       adc recorder export-dataset --selector KEY=VALUE"
         ),
         [cmd, ..] if cmd == "investigate" => {
             println!(

@@ -83,6 +83,19 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.loss_report.v1.generated.json",
         &recorder_incident["frozen_window"]["loss_report"],
     );
+    let dataset_manifest = command_json(
+        temp.path(),
+        [
+            "recorder",
+            "export-dataset",
+            "--selector",
+            "profile=camera_inference_degradation",
+        ],
+    );
+    write_fixture(
+        "cli.obs.dataset_manifest.v1.generated.json",
+        &dataset_manifest,
+    );
 
     command_json(
         temp.path(),

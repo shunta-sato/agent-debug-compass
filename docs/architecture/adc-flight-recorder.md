@@ -702,22 +702,32 @@ incident.
 
 ## CLI Surface
 
-Planned commands:
+Implemented commands:
 
 ```bash
 adc recorder status
-adc recorder arm --profile camera_inference_degradation
-adc recorder disarm
 adc recorder incidents
 adc recorder incident get --incident-id INC-20260604-103122
-adc recorder coverage --incident-id INC-20260604-103122
 adc recorder mark --symptom "camera frame drop observed around 10:31"
 adc recorder export-dataset --selector profile=camera_inference_degradation
 ```
 
-The existing `arm` / `disarm` commands remain the current daemon control surface
-until the recorder commands are implemented. New commands should not expose
-arbitrary shell or destructive target mutation.
+The existing top-level `adc arm --profile ...` and `adc disarm` commands remain
+the daemon control surface. `adc recorder mark` queues a marker for
+`adc-targetd`; the daemon freezes the retained memory-ring window into a bounded
+incident bundle. `adc recorder incident get` reads a materialized incident, and
+`adc recorder export-dataset` emits a local benchmark/regression manifest.
+
+Planned commands:
+
+```bash
+adc recorder arm --profile camera_inference_degradation
+adc recorder disarm
+adc recorder coverage --incident-id INC-20260604-103122
+```
+
+Recorder commands must not expose arbitrary shell or destructive target
+mutation.
 
 ## MCP Surface
 

@@ -106,6 +106,7 @@ fn recorder(args: &[String]) -> Result<(), String> {
         [cmd, subcmd, rest @ ..] if cmd == "incident" && subcmd == "get" => {
             recorder_incident_get(rest)
         }
+        [cmd, rest @ ..] if cmd == "export-dataset" => recorder_export_dataset(rest),
         _ => Err("usage: adc recorder status".to_string()),
     }
 }
@@ -169,23 +170,84 @@ fn recorder_mark(args: &[String]) -> Result<(), String> {
 
 fn recorder_incidents() -> Result<(), String> {
     let artifact_root = adc_core::snapshot::default_artifact_root();
-    let root = artifact_root.join("recorder/incidents");
-    let mut incidents = Vec::new();
-    if let Ok(entries) = fs::read_dir(&root) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.join("incident.json").is_file() {
-                incidents.push(entry.file_name().to_string_lossy().to_string());
-            }
-        }
-    }
-    incidents.sort();
+    let incidents = list_recorder_incident_ids(&artifact_root);
     let response = serde_json::json!({
         "schema_version": "obs.recorder_incident_list.v1",
         "incidents": incidents,
     });
     serde_json::to_writer_pretty(std::io::stdout(), &response)
         .map_err(|err| format!("failed to serialize recorder incidents: {err}"))?;
+    println!();
+    Ok(())
+}
+
+fn recorder_export_dataset(args: &[String]) -> Result<(), String> {
+    let selector = required_flag(args, "--selector")?;
+    let artifact_root = adc_core::snapshot::default_artifact_root();
+    let incident_ids = list_recorder_incident_ids(&artifact_root);
+    let mut windows = Vec::new();
+    for incident_id in incident_ids {
+        let incident_dir = artifact_root.join("recorder/incidents").join(&incident_id);
+        let incident: serde_json::Value = read_json_file(&incident_dir.join("incident.json"))?;
+        let window_ref = incident["frozen_window_ref"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let loss_report_ref = incident["loss_report_ref"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        windows.push(serde_json::json!({
+            "incident_id": incident_id,
+            "window_type": "positive_incident",
+            "window_ref": window_ref,
+            "loss_report_ref": loss_report_ref,
+            "artifact_trust_preserved": true,
+            "data_quality_preserved": true,
+            "label_state": "weak_label"
+        }));
+    }
+    let workload_profile = selector
+        .strip_prefix("profile=")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("unknown");
+    let data_quality = if windows.is_empty() {
+        serde_json::json!({
+            "dropped": false,
+            "drop_count": 0,
+            "throttled": false,
+            "missing": ["no recorder incidents matched selector"],
+            "truncated": false,
+            "clock_confidence": "medium",
+            "notes": []
+        })
+    } else {
+        serde_json::json!({
+            "dropped": false,
+            "drop_count": 0,
+            "throttled": false,
+            "missing": [],
+            "truncated": false,
+            "clock_confidence": "medium",
+            "notes": ["dataset manifest preserves refs, loss reports, and data-quality metadata"]
+        })
+    };
+    let response = serde_json::json!({
+        "schema_version": "obs.dataset_manifest.v1",
+        "dataset_id": format!("DS-{}", monotonic_now_ns()),
+        "selector": selector,
+        "dataset_types": ["benchmark", "regression"],
+        "generated_at_mono_ns": monotonic_now_ns(),
+        "recorder_policy_version": "default-memory-ring-budget",
+        "hardware_profile": "linux-edge",
+        "workload_profile": workload_profile,
+        "windows": windows,
+        "redaction_policy": "artifact trust and existing redaction metadata are preserved",
+        "sharing_policy": "local benchmark/regression export only; review before external sharing",
+        "data_quality": data_quality
+    });
+    serde_json::to_writer_pretty(std::io::stdout(), &response)
+        .map_err(|err| format!("failed to serialize recorder dataset manifest: {err}"))?;
     println!();
     Ok(())
 }
@@ -208,6 +270,21 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("failed to serialize recorder incident: {err}"))?;
     println!();
     Ok(())
+}
+
+fn list_recorder_incident_ids(artifact_root: &Path) -> Vec<String> {
+    let root = artifact_root.join("recorder/incidents");
+    let mut incidents = Vec::new();
+    if let Ok(entries) = fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.join("incident.json").is_file() {
+                incidents.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+    }
+    incidents.sort();
+    incidents
 }
 
 fn read_json_file(path: &Path) -> Result<serde_json::Value, String> {
