@@ -18,6 +18,7 @@ pub mod managed_fleet;
 pub mod overhead;
 pub mod probe_packs;
 pub mod profile;
+pub mod recorder;
 pub mod route_compiler;
 pub mod route_conditions;
 pub mod route_packs;
@@ -117,6 +118,12 @@ pub use probe_packs::{
     default_safe_probe_packs, safe_probe_packs_for_missing_facts, SafeProbePack,
 };
 pub use profile::{default_profile_dir, load_profile, parse_profile, Profile};
+pub use recorder::{
+    default_recorder_budget, recorder_status_for, RecorderBudget, RecorderBufferStatus,
+    RecorderGapRange, RecorderOverhead, RecorderRing, RecorderSample, RecorderSignalSample,
+    RecorderSignalStatus, RecorderState, RecorderStatus, RecorderStorageStatus,
+    RecorderTimeRange,
+};
 pub use route_compiler::{
     compile_route_for_symptom, CompiledInvestigationRoute, CompiledRoutePack, RejectedRoutePack,
     RouteCompileInput,

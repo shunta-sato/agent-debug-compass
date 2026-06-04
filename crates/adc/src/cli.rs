@@ -34,6 +34,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
         [cmd, rest @ ..] if cmd == "evidence" => evidence(rest),
         [cmd, rest @ ..] if cmd == "next-probe" => next_probe(rest),
         [cmd, rest @ ..] if cmd == "fleet" => fleet(rest),
+        [cmd, rest @ ..] if cmd == "recorder" => recorder(rest),
         [cmd, rest @ ..] if cmd == "arm" => arm(rest),
         [cmd] if cmd == "disarm" => disarm(),
         [cmd, rest @ ..] if cmd == "compare" => compare(rest),
@@ -44,7 +45,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
             print_help();
             Ok(())
         }
-        _ => Err("usage: adc <status|doctor|capabilities|observe|agent-context|snapshot|capture|target|evidence|next-probe|fleet|arm|disarm|compare|list-runs|investigate|bundle>".to_string()),
+        _ => Err("usage: adc <status|doctor|capabilities|observe|agent-context|snapshot|capture|target|evidence|next-probe|fleet|recorder|arm|disarm|compare|list-runs|investigate|bundle>".to_string()),
     }
 }
 
@@ -93,6 +94,38 @@ fn doctor() -> Result<(), String> {
     });
     serde_json::to_writer_pretty(std::io::stdout(), &response)
         .map_err(|err| format!("failed to serialize doctor response: {err}"))?;
+    println!();
+    Ok(())
+}
+
+fn recorder(args: &[String]) -> Result<(), String> {
+    match args {
+        [cmd] if cmd == "status" => recorder_status(),
+        _ => Err("usage: adc recorder status".to_string()),
+    }
+}
+
+fn recorder_status() -> Result<(), String> {
+    let artifact_root = adc_core::snapshot::default_artifact_root();
+    let active_profile = adc_core::read_state(&artifact_root)
+        .ok()
+        .and_then(|state| state.active_profile);
+    let ring = adc_core::RecorderRing::new("local", 1, 60_000);
+    let (previous, current) = if active_profile.is_some() {
+        ("disabled", "armed")
+    } else {
+        ("error", "disabled")
+    };
+    let status = adc_core::recorder_status_for(
+        "local",
+        active_profile.as_deref(),
+        previous,
+        current,
+        ring.status(),
+        adc_core::default_recorder_budget(),
+    );
+    serde_json::to_writer_pretty(std::io::stdout(), &status)
+        .map_err(|err| format!("failed to serialize recorder status: {err}"))?;
     println!();
     Ok(())
 }

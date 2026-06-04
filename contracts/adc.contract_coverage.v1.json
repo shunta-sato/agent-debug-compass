@@ -51,8 +51,9 @@
       "contract": "obs.recorder_status.v1",
       "schema": "schemas/obs.recorder_status.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.recorder_status.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_status.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
-      "coverage_levels": ["static", "invariant"]
+      "coverage_levels": ["static", "generated_cli", "invariant"]
     },
     {
       "contract": "obs.recorder_buffer_status.v1",

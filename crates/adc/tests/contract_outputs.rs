@@ -20,6 +20,12 @@ fn generated_cli_outputs_validate_against_public_contracts() {
     let capabilities = command_json(temp.path(), ["capabilities"]);
     write_fixture("cli.obs.capability_report.v1.generated.json", &capabilities);
 
+    let recorder_status = command_json(temp.path(), ["recorder", "status"]);
+    write_fixture(
+        "cli.obs.recorder_status.v1.generated.json",
+        &recorder_status,
+    );
+
     command_json(
         temp.path(),
         [
