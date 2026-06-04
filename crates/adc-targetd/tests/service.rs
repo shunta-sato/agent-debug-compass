@@ -75,7 +75,11 @@ triggers:
     let run_id = summary["captured_runs"][0]
         .as_str()
         .expect("captured run id");
+    let incident_id = summary["frozen_incidents"][0]
+        .as_str()
+        .expect("frozen incident id");
     let run_dir = temp.path().join("runs").join(run_id);
+    let incident_dir = temp.path().join("recorder/incidents").join(incident_id);
     assert_v2_top_level_layout(&run_dir);
     let evidence = fs::read_to_string(run_dir.join("evidence_index.yaml")).expect("evidence");
     let timeline = fs::read_to_string(run_dir.join("timeline.jsonl")).expect("timeline");
@@ -83,6 +87,17 @@ triggers:
     assert!(evidence.contains("raw_refs:"));
     assert!(timeline.contains(r#""source":"kmsg""#));
     assert!(timeline.contains("synthetic timeout"));
+    let frozen_window: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("frozen_window.json")).expect("frozen window"),
+    )
+    .expect("frozen window json");
+    let samples = fs::read_to_string(incident_dir.join("samples.jsonl")).expect("samples");
+    assert_eq!(frozen_window["freeze_reason"], "trigger_policy");
+    assert_eq!(
+        frozen_window["preservation_reason"]["name"],
+        "kmsg_warning_pattern"
+    );
+    assert!(samples.contains("kmsg.cursor"));
 }
 
 #[test]
@@ -145,6 +160,69 @@ triggers: []
         .expect("collector loss")
         .iter()
         .any(|loss| loss["collector_id"] == "memory.summary"));
+}
+
+#[test]
+fn service_for_ms_throttles_pending_marker_storm_to_recorder_budget() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("recorder_memory.yaml"),
+        r#"
+profile: recorder_memory
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    adc_core::arm_profile(temp.path(), "recorder_memory").expect("arm profile");
+    for index in 0..6 {
+        let marker = adc_core::marker_at_received_time(
+            format!("marker-storm-{index}"),
+            "operator",
+            "frame drops repeated quickly",
+            1_000 + index,
+        );
+        adc_core::write_pending_recorder_marker(temp.path(), &marker).expect("pending marker");
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "80"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    assert_eq!(
+        summary["frozen_incidents"]
+            .as_array()
+            .expect("frozen incidents")
+            .len(),
+        adc_core::default_recorder_budget().max_frozen_incidents as usize
+    );
+    assert_eq!(summary["data_quality"]["throttled"], true);
+    assert!(summary["data_quality"]["notes"]
+        .as_array()
+        .expect("notes")
+        .iter()
+        .any(|note| note
+            .as_str()
+            .is_some_and(|note| note.contains("max_frozen_incidents"))));
 }
 
 fn assert_v2_top_level_layout(run_dir: &Path) {

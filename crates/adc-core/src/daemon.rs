@@ -13,7 +13,7 @@ use crate::{
     aggregate_event_data_quality, build_evidence_index, build_overhead_report,
     collectors::{CpuSample, MemorySample, NetworkDeviceSample},
     default_recorder_budget, default_target_id, drain_pending_recorder_markers, evaluate_trigger,
-    freeze_recorder_marker, parse_meminfo, parse_net_dev, parse_proc_stat,
+    freeze_recorder_marker, freeze_recorder_trigger, parse_meminfo, parse_net_dev, parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
     snapshot, write_evidence_index, AdcError, AdcResult, ArtifactManifest, ClockSource,
     DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget, OverheadSample, Profile,
@@ -202,6 +202,13 @@ pub fn run_service_for(
         let sample = collect_live_sample(&profile);
         push_recorder_samples(&mut recorder_ring, &sample);
         for marker in drain_pending_recorder_markers(artifact_root)? {
+            if recorder_freeze_budget_exhausted(
+                frozen_incidents.len(),
+                &recorder_budget,
+                &mut summary_quality,
+            ) {
+                continue;
+            }
             let incident_id = format!("INC-{}", marker.marker_id);
             let window_id = format!("win-{}", marker.marker_id);
             freeze_recorder_marker(
@@ -218,6 +225,23 @@ pub fn run_service_for(
         {
             let run_id = next_daemon_run_id();
             create_trigger_bundle(artifact_root, &run_id, &profile, &sample, &matched)?;
+            let incident_id = format!("INC-{run_id}");
+            if !recorder_freeze_budget_exhausted(
+                frozen_incidents.len(),
+                &recorder_budget,
+                &mut summary_quality,
+            ) {
+                freeze_recorder_trigger(
+                    artifact_root,
+                    &incident_id,
+                    "win-trigger-001",
+                    &matched.evaluation.trigger_name,
+                    sample.time_mono_ns,
+                    &recorder_ring,
+                    &recorder_budget,
+                )?;
+                frozen_incidents.push(incident_id);
+            }
             record_run(artifact_root, &run_id)?;
             captured_runs.push(run_id);
             break;
@@ -488,6 +512,25 @@ fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) {
         time_mono_ns: sample.time_mono_ns,
         signals,
     });
+}
+
+fn recorder_freeze_budget_exhausted(
+    frozen_count: usize,
+    budget: &crate::RecorderBudget,
+    data_quality: &mut DataQuality,
+) -> bool {
+    if frozen_count < budget.max_frozen_incidents as usize {
+        return false;
+    }
+    data_quality.throttled = true;
+    let note = format!(
+        "recorder max_frozen_incidents budget reached: {}",
+        budget.max_frozen_incidents
+    );
+    if !data_quality.notes.iter().any(|existing| existing == &note) {
+        data_quality.notes.push(note);
+    }
+    true
 }
 
 fn create_trigger_bundle(

@@ -247,6 +247,13 @@ pub struct RecorderFreeze {
     pub run_dir: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecorderTriggerFreeze {
+    pub incident: RecorderIncident,
+    pub frozen_window: RecorderFrozenWindow,
+    pub run_dir: PathBuf,
+}
+
 pub fn recorder_pending_marker_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
     artifact_root.as_ref().join("recorder/markers/pending")
 }
@@ -543,6 +550,124 @@ pub fn freeze_recorder_marker(
     })
 }
 
+pub fn freeze_recorder_trigger(
+    artifact_root: impl AsRef<Path>,
+    incident_id: &str,
+    window_id: &str,
+    trigger_name: &str,
+    trigger_time_mono_ns: u64,
+    ring: &RecorderRing,
+    budget: &RecorderBudget,
+) -> AdcResult<RecorderTriggerFreeze> {
+    validate_preservation_reason_name(trigger_name)?;
+    let incident_dir = artifact_root
+        .as_ref()
+        .join("recorder")
+        .join("incidents")
+        .join(incident_id);
+    fs::create_dir_all(&incident_dir).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to create recorder incident directory {}: {err}",
+            incident_dir.display()
+        ))
+    })?;
+
+    let buffer_status = ring.status();
+    let loss_report = loss_report_for_buffer(window_id, &buffer_status);
+    let start = ring
+        .samples()
+        .first()
+        .map(|sample| sample.time_mono_ns)
+        .unwrap_or(trigger_time_mono_ns);
+    let end = ring
+        .samples()
+        .last()
+        .map(|sample| sample.time_mono_ns)
+        .unwrap_or(trigger_time_mono_ns);
+
+    let mut artifact_refs = BTreeMap::new();
+    artifact_refs.insert(
+        "trigger_event".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/trigger_event.json"),
+    );
+    artifact_refs.insert(
+        "samples".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/samples.jsonl"),
+    );
+    artifact_refs.insert(
+        "loss_report".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/loss_report.json"),
+    );
+
+    let frozen_window = RecorderFrozenWindow {
+        schema_version: "obs.recorder_frozen_window.v1".to_string(),
+        window_id: window_id.to_string(),
+        incident_id: incident_id.to_string(),
+        target_id: buffer_status.target_id.clone(),
+        marker_id: None,
+        freeze_reason: "trigger_policy".to_string(),
+        preservation_reason: PreservationReason {
+            kind: "trigger_policy".to_string(),
+            name: trigger_name.to_string(),
+        },
+        time_range_mono_ns: TimeRange { start, end },
+        pre_window_ms: budget.max_retention_ms,
+        post_window_ms: 0,
+        persistence: FrozenWindowPersistence {
+            persistence_mode: "bounded_artifact_bundle".to_string(),
+            survives_daemon_restart: true,
+            survives_target_reboot: true,
+            bounded_by: vec![
+                "max_freeze_bytes".to_string(),
+                "max_frozen_incidents".to_string(),
+                "retention_policy".to_string(),
+            ],
+        },
+        artifact_refs,
+        loss_report: loss_report.clone(),
+        data_quality: loss_report.data_quality.clone(),
+    };
+
+    let incident = RecorderIncident {
+        schema_version: "obs.recorder_incident.v1".to_string(),
+        incident_id: incident_id.to_string(),
+        target_id: buffer_status.target_id,
+        incident_state: "frozen".to_string(),
+        previous_state: "freezing".to_string(),
+        marker_id: None,
+        freeze_reason: "trigger_policy".to_string(),
+        frozen_window_ref: Some(format!(
+            "artifact://recorder/incidents/{incident_id}/frozen_window.json"
+        )),
+        loss_report_ref: Some(format!(
+            "artifact://recorder/incidents/{incident_id}/loss_report.json"
+        )),
+        created_at_mono_ns: trigger_time_mono_ns,
+        updated_at_mono_ns: trigger_time_mono_ns,
+        data_quality: frozen_window.data_quality.clone(),
+    };
+
+    write_json(
+        &incident_dir.join("trigger_event.json"),
+        &serde_json::json!({
+            "trigger_name": trigger_name,
+            "trigger_time_mono_ns": trigger_time_mono_ns,
+            "agent_contract": "preservation_reason_only",
+            "root_cause_claim": false
+        }),
+    )?;
+    write_jsonl(&incident_dir.join("samples.jsonl"), ring.samples())?;
+    write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
+    write_json(&incident_dir.join("frozen_window.json"), &frozen_window)?;
+    write_json(&incident_dir.join("incident.json"), &incident)?;
+
+    Ok(RecorderTriggerFreeze {
+        incident,
+        frozen_window,
+        run_dir: incident_dir,
+    })
+}
+
 fn freeze_reason_for_marker(marker: &RecorderMarker) -> String {
     match marker.source.as_str() {
         "agent" => "agent_marker",
@@ -550,6 +675,23 @@ fn freeze_reason_for_marker(marker: &RecorderMarker) -> String {
         _ => "operator_marker",
     }
     .to_string()
+}
+
+fn validate_preservation_reason_name(name: &str) -> AdcResult<()> {
+    let normalized = name.to_ascii_lowercase().replace(['_', '-'], " ");
+    let forbidden = [
+        "root cause",
+        "caused",
+        "cause detected",
+        "driver bug",
+        "bad firmware",
+    ];
+    if forbidden.iter().any(|needle| normalized.contains(needle)) {
+        return Err(AdcError::Artifact(format!(
+            "recorder trigger name must be symptom/event oriented, not a root-cause claim: {name}"
+        )));
+    }
+    Ok(())
 }
 
 fn loss_report_for_buffer(window_id: &str, status: &RecorderBufferStatus) -> LossReport {

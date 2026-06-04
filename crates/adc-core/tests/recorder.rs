@@ -1,6 +1,7 @@
 use adc_core::{
-    default_recorder_budget, freeze_recorder_marker, marker_at_received_time, recorder_status_for,
-    RecorderRing, RecorderSample, RecorderSignalSample,
+    default_recorder_budget, freeze_recorder_marker, freeze_recorder_trigger,
+    marker_at_received_time, recorder_status_for, RecorderRing, RecorderSample,
+    RecorderSignalSample,
 };
 
 #[test]
@@ -82,6 +83,26 @@ fn marker_freeze_materializes_bounded_incident_bundle_with_loss_report() {
         .path()
         .join("recorder/incidents/INC-001/frozen_window.json")
         .is_file());
+}
+
+#[test]
+fn trigger_freeze_rejects_root_cause_like_trigger_names() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut ring = RecorderRing::new("local", 2, 60_000);
+    ring.push(sample(1_000, "cpu.summary", 10.0));
+
+    let err = freeze_recorder_trigger(
+        temp.path(),
+        "INC-TRIGGER",
+        "win-trigger",
+        "cpu_root_cause_detected",
+        1_000,
+        &ring,
+        &default_recorder_budget(),
+    )
+    .expect_err("root-cause-like trigger name must fail");
+
+    assert!(err.to_string().contains("symptom/event oriented"));
 }
 
 fn sample(time_mono_ns: u64, signal_id: &str, value: f64) -> RecorderSample {
