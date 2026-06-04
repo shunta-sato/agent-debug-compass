@@ -523,11 +523,17 @@ fn probe_result_schema() -> JsonObject {
     serde_json::from_value(json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["probe_plan_id", "probe_id", "missing_fact"],
+        "required": ["result_kind", "probe_plan_id", "probe_id"],
         "properties": {
+            "result_kind": {
+                "type": "string",
+                "enum": ["not_executed_missing_capability", "not_executed_policy_denied"],
+                "description": "Recording-only outcome kind. This tool never executes probes."
+            },
             "probe_plan_id": {"type": "string"},
             "probe_id": {"type": "string"},
             "missing_fact": {"type": "string"},
+            "reason": {"type": "string"},
             "hypothesis_ids": {
                 "type": "array",
                 "items": {"type": "string"}

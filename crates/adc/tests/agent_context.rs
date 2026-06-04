@@ -288,6 +288,7 @@ fn investigate_probe_result_records_missing_capability_without_running_probe() {
         .args([
             "investigate",
             "probe-result",
+            "missing-capability",
             "--probe-plan-id",
             "PP001",
             "--probe-id",
@@ -307,6 +308,8 @@ fn investigate_probe_result_records_missing_capability_without_running_probe() {
     let result: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("probe result json");
     assert_eq!(result["schema_version"], "obs.probe_result.v1");
+    assert_eq!(result["result_kind"], "not_executed_missing_capability");
+    assert_eq!(result["executed"], false);
     assert_eq!(result["status"], "failed_missing_capability");
     assert_eq!(result["hypothesis_updates"][0]["update"], "needs_evidence");
     assert!(result["data_quality"]["missing"]
@@ -316,6 +319,62 @@ fn investigate_probe_result_records_missing_capability_without_running_probe() {
         .any(|value| value
             .as_str()
             .is_some_and(|text| text.contains("process.runqueue_latency"))));
+}
+
+#[test]
+fn investigate_probe_result_records_policy_denied_without_running_probe() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adc"))
+        .args([
+            "investigate",
+            "probe-result",
+            "policy-denied",
+            "--probe-plan-id",
+            "PP002",
+            "--probe-id",
+            "probe.restart_service",
+            "--reason",
+            "restart_service requires human approval",
+            "--hypothesis-id",
+            "H002",
+        ])
+        .output()
+        .expect("probe result");
+    assert!(
+        output.status.success(),
+        "probe result failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("probe result json");
+    assert_eq!(result["schema_version"], "obs.probe_result.v1");
+    assert_eq!(result["result_kind"], "not_executed_policy_denied");
+    assert_eq!(result["executed"], false);
+    assert_eq!(result["status"], "failed_policy_denied");
+    assert_eq!(result["safety_decision"], "deny");
+    assert_eq!(result["hypothesis_updates"][0]["hypothesis_id"], "H002");
+}
+
+#[test]
+fn investigate_probe_result_rejects_old_flat_public_form() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adc"))
+        .args([
+            "investigate",
+            "probe-result",
+            "--probe-plan-id",
+            "PP001",
+            "--probe-id",
+            "probe.scheduler_snapshot",
+            "--missing-fact",
+            "process.runqueue_latency",
+        ])
+        .output()
+        .expect("probe result");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("missing-capability") && stderr.contains("policy-denied"),
+        "unexpected stderr: {stderr}"
+    );
 }
 
 #[test]

@@ -178,9 +178,11 @@ struct ContinueInvestigationParams {
 
 #[derive(Debug, Deserialize)]
 struct ProbeResultParams {
+    result_kind: String,
     probe_plan_id: String,
     probe_id: String,
-    missing_fact: String,
+    missing_fact: Option<String>,
+    reason: Option<String>,
     hypothesis_ids: Option<Vec<String>>,
 }
 
@@ -579,21 +581,64 @@ impl AdcMcpServer {
             }
             "obs.record_probe_result" => {
                 let params: ProbeResultParams = decode_arguments(request.arguments)?;
-                let data_quality = adc_core::DataQuality {
-                    missing: vec![format!(
-                        "{} unavailable in recorded probe result",
-                        params.missing_fact
-                    )],
-                    clock_confidence: "medium".to_string(),
-                    ..Default::default()
+                let hypothesis_ids = params.hypothesis_ids.unwrap_or_default();
+                let result = match params.result_kind.as_str() {
+                    "not_executed_missing_capability" => {
+                        let missing_fact = params.missing_fact.ok_or_else(|| {
+                            ErrorData::invalid_params(
+                                "missing_fact is required for not_executed_missing_capability"
+                                    .to_string(),
+                                None,
+                            )
+                        })?;
+                        let data_quality = adc_core::DataQuality {
+                            missing: vec![format!(
+                                "{missing_fact} unavailable in recorded probe result"
+                            )],
+                            clock_confidence: "medium".to_string(),
+                            ..Default::default()
+                        };
+                        adc_core::probe_result_for_unavailable_capability(
+                            &params.probe_plan_id,
+                            &params.probe_id,
+                            &hypothesis_ids,
+                            &missing_fact,
+                            &data_quality,
+                        )
+                    }
+                    "not_executed_policy_denied" => {
+                        let reason = params.reason.ok_or_else(|| {
+                            ErrorData::invalid_params(
+                                "reason is required for not_executed_policy_denied".to_string(),
+                                None,
+                            )
+                        })?;
+                        let data_quality = adc_core::DataQuality {
+                            missing: vec![format!(
+                                "{} was not executed because policy denied the probe",
+                                params.probe_id
+                            )],
+                            clock_confidence: "medium".to_string(),
+                            notes: vec![reason.clone()],
+                            ..Default::default()
+                        };
+                        adc_core::probe_result_for_policy_denied(
+                            &params.probe_plan_id,
+                            &params.probe_id,
+                            &hypothesis_ids,
+                            &reason,
+                            &data_quality,
+                        )
+                    }
+                    other => {
+                        return Err(ErrorData::invalid_params(
+                            format!(
+                                "unsupported result_kind {other}; expected not_executed_missing_capability or not_executed_policy_denied"
+                            ),
+                            None,
+                        ));
+                    }
                 };
-                let result = adc_core::probe_result_for_unavailable_capability(
-                    &params.probe_plan_id,
-                    &params.probe_id,
-                    &params.hypothesis_ids.unwrap_or_default(),
-                    &params.missing_fact,
-                    &data_quality,
-                );
                 serde_json::to_value(result)
                     .map(CallToolResult::structured)
                     .map_err(to_internal_error)

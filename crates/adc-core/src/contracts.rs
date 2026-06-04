@@ -697,6 +697,37 @@ pub fn probe_result_for_unavailable_capability(
     }
 }
 
+pub fn probe_result_for_policy_denied(
+    probe_plan_id: &str,
+    probe_id: &str,
+    hypothesis_ids: &[String],
+    reason: &str,
+    data_quality: &DataQuality,
+) -> ProbeResult {
+    ProbeResult {
+        schema_version: "obs.probe_result.v1".to_string(),
+        probe_id: probe_id.to_string(),
+        probe_plan_id: probe_plan_id.to_string(),
+        result_kind: ProbeResultKind::NotExecutedPolicyDenied,
+        executor: ProbeExecutor::Adc,
+        executed: false,
+        safety_decision: SafetyDecision::Deny,
+        capability_status: CapabilityStatus::Unknown,
+        status: ProbeResultStatus::FailedPolicyDenied,
+        produced_refs: Vec::new(),
+        produced_facts: Vec::new(),
+        hypothesis_updates: hypothesis_ids
+            .iter()
+            .map(|hypothesis_id| ProbeHypothesisUpdate {
+                hypothesis_id: hypothesis_id.clone(),
+                update: HypothesisStatus::NeedsEvidence,
+                reason: format!("The probe was not executed because policy denied it: {reason}"),
+            })
+            .collect(),
+        data_quality: data_quality.clone(),
+    }
+}
+
 fn hypothesis_set_for(
     scope: &str,
     run_id: Option<&str>,
