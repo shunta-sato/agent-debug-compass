@@ -101,6 +101,11 @@ fn doctor() -> Result<(), String> {
 fn recorder(args: &[String]) -> Result<(), String> {
     match args {
         [cmd] if cmd == "status" => recorder_status(),
+        [cmd, rest @ ..] if cmd == "mark" => recorder_mark(rest),
+        [cmd] if cmd == "incidents" => recorder_incidents(),
+        [cmd, subcmd, rest @ ..] if cmd == "incident" && subcmd == "get" => {
+            recorder_incident_get(rest)
+        }
         _ => Err("usage: adc recorder status".to_string()),
     }
 }
@@ -128,6 +133,98 @@ fn recorder_status() -> Result<(), String> {
         .map_err(|err| format!("failed to serialize recorder status: {err}"))?;
     println!();
     Ok(())
+}
+
+fn recorder_mark(args: &[String]) -> Result<(), String> {
+    let symptom = required_flag(args, "--symptom")?;
+    let artifact_root = adc_core::snapshot::default_artifact_root();
+    let received_at = monotonic_now_ns();
+    let incident_id = optional_flag(args, "--incident-id")
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("INC-{received_at}"));
+    let marker_id = optional_flag(args, "--marker-id")
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("marker-{received_at}"));
+    let marker = adc_core::marker_at_received_time(&marker_id, "operator", symptom, received_at);
+    let ring = adc_core::RecorderRing::new("local", 1, 60_000);
+    let freeze = adc_core::freeze_recorder_marker(
+        &artifact_root,
+        &incident_id,
+        "win-001",
+        &marker,
+        &ring,
+        &adc_core::default_recorder_budget(),
+    )
+    .map_err(|err| err.to_string())?;
+    let response = serde_json::json!({
+        "marker": freeze.marker,
+        "incident": freeze.incident,
+        "frozen_window": freeze.frozen_window,
+        "incident_dir": freeze.run_dir,
+    });
+    serde_json::to_writer_pretty(std::io::stdout(), &response)
+        .map_err(|err| format!("failed to serialize recorder marker freeze: {err}"))?;
+    println!();
+    Ok(())
+}
+
+fn recorder_incidents() -> Result<(), String> {
+    let artifact_root = adc_core::snapshot::default_artifact_root();
+    let root = artifact_root.join("recorder/incidents");
+    let mut incidents = Vec::new();
+    if let Ok(entries) = fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.join("incident.json").is_file() {
+                incidents.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+    }
+    incidents.sort();
+    let response = serde_json::json!({
+        "schema_version": "obs.recorder_incident_list.v1",
+        "incidents": incidents,
+    });
+    serde_json::to_writer_pretty(std::io::stdout(), &response)
+        .map_err(|err| format!("failed to serialize recorder incidents: {err}"))?;
+    println!();
+    Ok(())
+}
+
+fn recorder_incident_get(args: &[String]) -> Result<(), String> {
+    let incident_id = required_flag(args, "--incident-id")?;
+    let artifact_root = adc_core::snapshot::default_artifact_root();
+    let incident_dir = artifact_root.join("recorder/incidents").join(incident_id);
+    let marker: serde_json::Value = read_json_file(&incident_dir.join("marker.json"))?;
+    let incident: serde_json::Value = read_json_file(&incident_dir.join("incident.json"))?;
+    let frozen_window: serde_json::Value =
+        read_json_file(&incident_dir.join("frozen_window.json"))?;
+    let response = serde_json::json!({
+        "marker": marker,
+        "incident": incident,
+        "frozen_window": frozen_window,
+        "incident_dir": incident_dir,
+    });
+    serde_json::to_writer_pretty(std::io::stdout(), &response)
+        .map_err(|err| format!("failed to serialize recorder incident: {err}"))?;
+    println!();
+    Ok(())
+}
+
+fn read_json_file(path: &Path) -> Result<serde_json::Value, String> {
+    let bytes =
+        fs::read(path).map_err(|err| format!("failed to read {}: {err}", path.display()))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|err| format!("failed to parse {}: {err}", path.display()))
+}
+
+fn monotonic_now_ns() -> u64 {
+    fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|contents| contents.split_whitespace().next().map(str::to_string))
+        .and_then(|seconds| seconds.parse::<f64>().ok())
+        .map(|seconds| (seconds * 1_000_000_000.0) as u64)
+        .unwrap_or(0)
 }
 
 fn observe(args: &[String]) -> Result<(), String> {

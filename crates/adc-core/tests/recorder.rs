@@ -1,6 +1,6 @@
 use adc_core::{
-    default_recorder_budget, recorder_status_for, RecorderRing, RecorderSample,
-    RecorderSignalSample,
+    default_recorder_budget, freeze_recorder_marker, marker_at_received_time, recorder_status_for,
+    RecorderRing, RecorderSample, RecorderSignalSample,
 };
 
 #[test]
@@ -41,6 +41,47 @@ fn recorder_status_exposes_budget_overhead_and_volatility() {
     assert!(status.storage.volatile);
     assert_eq!(status.budget.schema_version, "obs.recorder_budget.v1");
     assert_eq!(status.overhead.schema_version, "obs.recorder_overhead.v1");
+}
+
+#[test]
+fn marker_freeze_materializes_bounded_incident_bundle_with_loss_report() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut ring = RecorderRing::new("local", 2, 60_000);
+    ring.push(sample(1_000, "cpu.summary", 10.0));
+    ring.push(sample(2_000, "cpu.summary", 20.0));
+    ring.push(sample(3_000, "cpu.summary", 30.0));
+
+    let marker = marker_at_received_time(
+        "marker-001",
+        "operator",
+        "camera frame drop observed around now",
+        3_000,
+    );
+    let freeze = freeze_recorder_marker(
+        temp.path(),
+        "INC-001",
+        "win-001",
+        &marker,
+        &ring,
+        &default_recorder_budget(),
+    )
+    .expect("freeze marker");
+
+    assert_eq!(freeze.incident.schema_version, "obs.recorder_incident.v1");
+    assert_eq!(
+        freeze.frozen_window.schema_version,
+        "obs.recorder_frozen_window.v1"
+    );
+    assert_eq!(
+        freeze.frozen_window.persistence.persistence_mode,
+        "bounded_artifact_bundle"
+    );
+    assert!(freeze.frozen_window.artifact_refs.contains_key("samples"));
+    assert!(freeze.frozen_window.loss_report.data_quality.dropped);
+    assert!(temp
+        .path()
+        .join("recorder/incidents/INC-001/frozen_window.json")
+        .is_file());
 }
 
 fn sample(time_mono_ns: u64, signal_id: &str, value: f64) -> RecorderSample {

@@ -20,7 +20,9 @@ pub fn print_help_for(args: &[String]) {
         [cmd, ..] if cmd == "fleet" => println!(
             "Usage: adc fleet <init|invite|enroll|enroll-kit|targets|discover|preflight|observe|snapshot|capture|evidence>"
         ),
-        [cmd, ..] if cmd == "recorder" => println!("Usage: adc recorder status"),
+        [cmd, ..] if cmd == "recorder" => println!(
+            "Usage: adc recorder status\n       adc recorder mark --symptom TEXT [--incident-id ID] [--marker-id ID]\n       adc recorder incidents\n       adc recorder incident get --incident-id ID"
+        ),
         [cmd, ..] if cmd == "investigate" => {
             println!(
                 "Usage: adc investigate bug --symptom <text> [--run-id <id>|--fleet-run-id <id>|--duration-ms N] [--service-name NAME] [--inventory PATH]\n       adc investigate start (--run-id <id>|--fleet-run-id <id>) [--service-name NAME] [--inventory PATH] [--journal-lines N] [--format json|markdown]\n       adc investigate continue (--run-id <id>|--fleet-run-id <id>) --step-id <id> [--service-name NAME] [--ref-label LABEL] [--ref REF]\n       adc investigate session (--run-id <id>|--fleet-run-id <id>) --session-id <id>\n       adc investigate cleanup-sessions (--run-id <id>|--fleet-run-id <id>) [--max-sessions N] [--max-age-days N] [--dry-run|--execute]\n       adc investigate probe-result missing-capability --probe-plan-id ID --probe-id ID --missing-fact FACT [--hypothesis-id H]\n       adc investigate probe-result policy-denied --probe-plan-id ID --probe-id ID --reason TEXT [--hypothesis-id H]\n       adc investigate route-packs\n       adc investigate service <name> [--journal-lines N]\n       adc investigate ref --ref artifact://service_investigations/... [--limit N]"

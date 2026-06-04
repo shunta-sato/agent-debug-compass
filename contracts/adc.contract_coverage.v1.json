@@ -72,33 +72,37 @@
       "contract": "obs.recorder_marker.v1",
       "schema": "schemas/obs.recorder_marker.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.recorder_marker.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_marker.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
-      "coverage_levels": ["static", "invariant", "adversarial"]
+      "coverage_levels": ["static", "generated_cli", "invariant", "adversarial"]
     },
     {
       "contract": "obs.recorder_incident.v1",
       "schema": "schemas/obs.recorder_incident.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.recorder_incident.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_incident.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
-      "coverage_levels": ["static", "invariant", "adversarial"]
+      "coverage_levels": ["static", "generated_cli", "invariant", "adversarial"]
     },
     {
       "contract": "obs.recorder_frozen_window.v1",
       "schema": "schemas/obs.recorder_frozen_window.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.recorder_frozen_window.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_frozen_window.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
-      "coverage_levels": ["static", "invariant", "adversarial"]
+      "coverage_levels": ["static", "generated_cli", "invariant", "adversarial"]
     },
     {
       "contract": "obs.loss_report.v1",
       "schema": "schemas/obs.loss_report.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.loss_report.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.loss_report.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
-      "coverage_levels": ["static", "invariant", "adversarial"]
+      "coverage_levels": ["static", "generated_cli", "invariant", "adversarial"]
     },
     {
       "contract": "obs.recorder_overhead.v1",

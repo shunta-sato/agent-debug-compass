@@ -119,10 +119,12 @@ pub use probe_packs::{
 };
 pub use profile::{default_profile_dir, load_profile, parse_profile, Profile};
 pub use recorder::{
-    default_recorder_budget, recorder_status_for, RecorderBudget, RecorderBufferStatus,
-    RecorderGapRange, RecorderOverhead, RecorderRing, RecorderSample, RecorderSignalSample,
-    RecorderSignalStatus, RecorderState, RecorderStatus, RecorderStorageStatus,
-    RecorderTimeRange,
+    default_recorder_budget, freeze_recorder_marker, marker_at_received_time, recorder_status_for,
+    AssertedEventTime, CollectorLoss, FrozenWindowPersistence, LossReport, PreservationReason,
+    RecorderBudget, RecorderBufferStatus, RecorderFreeze, RecorderFrozenWindow, RecorderGapRange,
+    RecorderIncident, RecorderMarker, RecorderOverhead, RecorderRing, RecorderSample,
+    RecorderSignalSample, RecorderSignalStatus, RecorderState, RecorderStatus,
+    RecorderStorageStatus, RecorderTimeRange, TimeRange,
 };
 pub use route_compiler::{
     compile_route_for_symptom, CompiledInvestigationRoute, CompiledRoutePack, RejectedRoutePack,

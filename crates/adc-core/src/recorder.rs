@@ -1,8 +1,12 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ClockConfidence, DataQuality};
+use crate::{AdcError, AdcResult, ClockConfidence, DataQuality};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -139,6 +143,110 @@ pub struct RecorderStatus {
     pub data_quality: DataQuality,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssertedEventTime {
+    pub kind: String,
+    pub wall_time_unix_ms: Option<u64>,
+    pub mono_ns: Option<u64>,
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderMarker {
+    pub schema_version: String,
+    pub marker_id: String,
+    pub source: String,
+    pub received_at_mono_ns: u64,
+    pub symptom: String,
+    pub asserted_event_time: AssertedEventTime,
+    pub time_policy: String,
+    pub trust_level: String,
+    pub agent_instruction_policy: String,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectorLoss {
+    pub collector_id: String,
+    pub expected_samples: Option<u64>,
+    pub recorded_samples: u64,
+    pub dropped_samples: u64,
+    pub gap_ranges: Vec<RecorderGapRange>,
+    pub collectors_degraded: Vec<String>,
+    pub loss_reasons: Vec<String>,
+    pub loss_confidence: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LossReport {
+    pub schema_version: String,
+    pub window_id: String,
+    pub collector_loss: Vec<CollectorLoss>,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreservationReason {
+    pub kind: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrozenWindowPersistence {
+    pub persistence_mode: String,
+    pub survives_daemon_restart: bool,
+    pub survives_target_reboot: bool,
+    pub bounded_by: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecorderFrozenWindow {
+    pub schema_version: String,
+    pub window_id: String,
+    pub incident_id: String,
+    pub target_id: String,
+    pub marker_id: Option<String>,
+    pub freeze_reason: String,
+    pub preservation_reason: PreservationReason,
+    pub time_range_mono_ns: TimeRange,
+    pub pre_window_ms: u64,
+    pub post_window_ms: u64,
+    pub persistence: FrozenWindowPersistence,
+    pub artifact_refs: BTreeMap<String, String>,
+    pub loss_report: LossReport,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimeRange {
+    pub start: u64,
+    pub end: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderIncident {
+    pub schema_version: String,
+    pub incident_id: String,
+    pub target_id: String,
+    pub incident_state: String,
+    pub previous_state: String,
+    pub marker_id: Option<String>,
+    pub freeze_reason: String,
+    pub frozen_window_ref: Option<String>,
+    pub loss_report_ref: Option<String>,
+    pub created_at_mono_ns: u64,
+    pub updated_at_mono_ns: u64,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecorderFreeze {
+    pub incident: RecorderIncident,
+    pub marker: RecorderMarker,
+    pub frozen_window: RecorderFrozenWindow,
+    pub run_dir: PathBuf,
+}
+
 #[derive(Debug, Clone)]
 pub struct RecorderRing {
     target_id: String,
@@ -169,6 +277,10 @@ impl RecorderRing {
             self.samples.remove(0);
         }
         self.samples.push(sample);
+    }
+
+    pub fn samples(&self) -> &[RecorderSample] {
+        &self.samples
     }
 
     pub fn status(&self) -> RecorderBufferStatus {
@@ -216,6 +328,231 @@ impl RecorderRing {
             data_quality: data_quality_for_drop_count(total_dropped),
         }
     }
+}
+
+pub fn marker_at_received_time(
+    marker_id: impl Into<String>,
+    source: &str,
+    symptom: impl Into<String>,
+    received_at_mono_ns: u64,
+) -> RecorderMarker {
+    let trust_level = match source {
+        "agent" => "agent_marker",
+        "app" => "app_marker",
+        "external_detector" | "watchdog" => "external_marker",
+        _ => "operator_marker",
+    };
+    RecorderMarker {
+        schema_version: "obs.recorder_marker.v1".to_string(),
+        marker_id: marker_id.into(),
+        source: source.to_string(),
+        received_at_mono_ns,
+        symptom: symptom.into(),
+        asserted_event_time: AssertedEventTime {
+            kind: "relative_now".to_string(),
+            wall_time_unix_ms: None,
+            mono_ns: None,
+            confidence: "low".to_string(),
+        },
+        time_policy: "center_on_received_at".to_string(),
+        trust_level: trust_level.to_string(),
+        agent_instruction_policy: "treat_as_event_marker_only".to_string(),
+        data_quality: DataQuality {
+            clock_confidence: ClockConfidence::Medium,
+            notes: vec!["marker centered on received monotonic time".to_string()],
+            ..Default::default()
+        },
+    }
+}
+
+pub fn freeze_recorder_marker(
+    artifact_root: impl AsRef<Path>,
+    incident_id: &str,
+    window_id: &str,
+    marker: &RecorderMarker,
+    ring: &RecorderRing,
+    budget: &RecorderBudget,
+) -> AdcResult<RecorderFreeze> {
+    let incident_dir = artifact_root
+        .as_ref()
+        .join("recorder")
+        .join("incidents")
+        .join(incident_id);
+    fs::create_dir_all(&incident_dir).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to create recorder incident directory {}: {err}",
+            incident_dir.display()
+        ))
+    })?;
+
+    let buffer_status = ring.status();
+    let loss_report = loss_report_for_buffer(window_id, &buffer_status);
+    let start = ring
+        .samples()
+        .first()
+        .map(|sample| sample.time_mono_ns)
+        .unwrap_or(marker.received_at_mono_ns);
+    let end = ring
+        .samples()
+        .last()
+        .map(|sample| sample.time_mono_ns)
+        .unwrap_or(marker.received_at_mono_ns);
+
+    let mut artifact_refs = BTreeMap::new();
+    artifact_refs.insert(
+        "marker".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/marker.json"),
+    );
+    artifact_refs.insert(
+        "samples".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/samples.jsonl"),
+    );
+    artifact_refs.insert(
+        "loss_report".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/loss_report.json"),
+    );
+
+    let frozen_window = RecorderFrozenWindow {
+        schema_version: "obs.recorder_frozen_window.v1".to_string(),
+        window_id: window_id.to_string(),
+        incident_id: incident_id.to_string(),
+        target_id: buffer_status.target_id.clone(),
+        marker_id: Some(marker.marker_id.clone()),
+        freeze_reason: freeze_reason_for_marker(marker),
+        preservation_reason: PreservationReason {
+            kind: freeze_reason_for_marker(marker),
+            name: "marker_received".to_string(),
+        },
+        time_range_mono_ns: TimeRange { start, end },
+        pre_window_ms: budget.max_retention_ms,
+        post_window_ms: 0,
+        persistence: FrozenWindowPersistence {
+            persistence_mode: "bounded_artifact_bundle".to_string(),
+            survives_daemon_restart: true,
+            survives_target_reboot: true,
+            bounded_by: vec![
+                "max_freeze_bytes".to_string(),
+                "max_frozen_incidents".to_string(),
+                "retention_policy".to_string(),
+            ],
+        },
+        artifact_refs,
+        loss_report: loss_report.clone(),
+        data_quality: loss_report.data_quality.clone(),
+    };
+
+    let incident = RecorderIncident {
+        schema_version: "obs.recorder_incident.v1".to_string(),
+        incident_id: incident_id.to_string(),
+        target_id: buffer_status.target_id,
+        incident_state: "frozen".to_string(),
+        previous_state: "freezing".to_string(),
+        marker_id: Some(marker.marker_id.clone()),
+        freeze_reason: frozen_window.freeze_reason.clone(),
+        frozen_window_ref: Some(format!(
+            "artifact://recorder/incidents/{incident_id}/frozen_window.json"
+        )),
+        loss_report_ref: Some(format!(
+            "artifact://recorder/incidents/{incident_id}/loss_report.json"
+        )),
+        created_at_mono_ns: marker.received_at_mono_ns,
+        updated_at_mono_ns: marker.received_at_mono_ns,
+        data_quality: frozen_window.data_quality.clone(),
+    };
+
+    write_json(&incident_dir.join("marker.json"), marker)?;
+    write_jsonl(&incident_dir.join("samples.jsonl"), ring.samples())?;
+    write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
+    write_json(&incident_dir.join("frozen_window.json"), &frozen_window)?;
+    write_json(&incident_dir.join("incident.json"), &incident)?;
+
+    Ok(RecorderFreeze {
+        incident,
+        marker: marker.clone(),
+        frozen_window,
+        run_dir: incident_dir,
+    })
+}
+
+fn freeze_reason_for_marker(marker: &RecorderMarker) -> String {
+    match marker.source.as_str() {
+        "agent" => "agent_marker",
+        "app" | "external_detector" | "watchdog" => "external_marker",
+        _ => "operator_marker",
+    }
+    .to_string()
+}
+
+fn loss_report_for_buffer(window_id: &str, status: &RecorderBufferStatus) -> LossReport {
+    let mut loss_quality = medium_quality();
+    let mut collector_loss = Vec::new();
+    let mut total_dropped = 0_u64;
+    for signal in &status.signals {
+        total_dropped = total_dropped.saturating_add(signal.dropped_samples);
+        let mut reasons = Vec::new();
+        if signal.dropped_samples > 0 {
+            reasons.push("ring_capacity_drop_oldest".to_string());
+        }
+        if signal.recorded_samples == 0 {
+            reasons.push("collector_absent_or_no_samples".to_string());
+        }
+        collector_loss.push(CollectorLoss {
+            collector_id: signal.signal_id.clone(),
+            expected_samples: signal.expected_samples,
+            recorded_samples: signal.recorded_samples,
+            dropped_samples: signal.dropped_samples,
+            gap_ranges: signal.gap_ranges.clone(),
+            collectors_degraded: if signal.degraded {
+                vec![signal.signal_id.clone()]
+            } else {
+                Vec::new()
+            },
+            loss_reasons: reasons,
+            loss_confidence: if signal.expected_samples.is_some() {
+                "medium".to_string()
+            } else {
+                "unknown".to_string()
+            },
+        });
+    }
+    if total_dropped > 0 {
+        loss_quality.dropped = true;
+        loss_quality.drop_count = total_dropped;
+        loss_quality
+            .notes
+            .push("memory ring dropped samples before freeze".to_string());
+    }
+    if collector_loss.is_empty() {
+        loss_quality
+            .missing
+            .push("no retained recorder samples were available at freeze time".to_string());
+    }
+    LossReport {
+        schema_version: "obs.loss_report.v1".to_string(),
+        window_id: window_id.to_string(),
+        collector_loss,
+        data_quality: loss_quality,
+    }
+}
+
+fn write_json(path: &Path, value: &impl Serialize) -> AdcResult<()> {
+    let bytes = serde_json::to_vec_pretty(value)
+        .map_err(|err| AdcError::Artifact(format!("recorder json serialization failed: {err}")))?;
+    fs::write(path, bytes)
+        .map_err(|err| AdcError::Artifact(format!("failed to write {}: {err}", path.display())))
+}
+
+fn write_jsonl(path: &Path, samples: &[RecorderSample]) -> AdcResult<()> {
+    let mut lines = String::new();
+    for sample in samples {
+        let line = serde_json::to_string(sample).map_err(|err| {
+            AdcError::Artifact(format!("recorder sample serialization failed: {err}"))
+        })?;
+        lines.push_str(&line);
+        lines.push('\n');
+    }
+    fs::write(path, lines)
+        .map_err(|err| AdcError::Artifact(format!("failed to write {}: {err}", path.display())))
 }
 
 pub fn default_recorder_budget() -> RecorderBudget {

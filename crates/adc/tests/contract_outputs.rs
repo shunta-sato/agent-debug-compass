@@ -25,6 +25,31 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.recorder_status.v1.generated.json",
         &recorder_status,
     );
+    let recorder_mark = command_json_vec(
+        temp.path(),
+        vec![
+            "recorder".to_string(),
+            "mark".to_string(),
+            "--symptom".to_string(),
+            "camera frame drop observed around now".to_string(),
+        ],
+    );
+    write_fixture(
+        "cli.obs.recorder_marker.v1.generated.json",
+        &recorder_mark["marker"],
+    );
+    write_fixture(
+        "cli.obs.recorder_incident.v1.generated.json",
+        &recorder_mark["incident"],
+    );
+    write_fixture(
+        "cli.obs.recorder_frozen_window.v1.generated.json",
+        &recorder_mark["frozen_window"],
+    );
+    write_fixture(
+        "cli.obs.loss_report.v1.generated.json",
+        &recorder_mark["frozen_window"]["loss_report"],
+    );
 
     command_json(
         temp.path(),
