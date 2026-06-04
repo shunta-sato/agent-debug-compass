@@ -113,23 +113,37 @@ fn recorder(args: &[String]) -> Result<(), String> {
 
 fn recorder_status() -> Result<(), String> {
     let artifact_root = adc_core::snapshot::default_artifact_root();
+    if let Ok(status) = adc_core::read_recorder_status_artifact(&artifact_root) {
+        serde_json::to_writer_pretty(std::io::stdout(), &status)
+            .map_err(|err| format!("failed to serialize recorder status: {err}"))?;
+        println!();
+        return Ok(());
+    }
     let active_profile = adc_core::read_state(&artifact_root)
         .ok()
         .and_then(|state| state.active_profile);
     let ring = adc_core::RecorderRing::new("local", 1, 60_000);
-    let (previous, current) = if active_profile.is_some() {
-        ("disabled", "armed")
+    let current = if active_profile.is_some() {
+        "armed"
     } else {
-        ("error", "disabled")
+        "disabled"
     };
-    let status = adc_core::recorder_status_for(
+    let mut status = adc_core::recorder_status_for(
         "local",
         active_profile.as_deref(),
-        previous,
+        None,
         current,
         ring.status(),
         adc_core::default_recorder_budget(),
     );
+    status.data_quality.missing.push(
+        "live recorder status artifact not found; adc-targetd may not be running".to_string(),
+    );
+    status
+        .buffer_status
+        .data_quality
+        .missing
+        .push("live recorder buffer status is unavailable".to_string());
     serde_json::to_writer_pretty(std::io::stdout(), &status)
         .map_err(|err| format!("failed to serialize recorder status: {err}"))?;
     println!();
@@ -147,22 +161,14 @@ fn recorder_mark(args: &[String]) -> Result<(), String> {
     let marker = adc_core::marker_at_received_time(&marker_id, "operator", symptom, received_at);
     let marker_path = adc_core::write_pending_recorder_marker(&artifact_root, &marker)
         .map_err(|err| err.to_string())?;
-    let response = serde_json::json!({
-        "marker": marker,
-        "status": "pending",
-        "pending_marker_path": marker_path,
-        "expected_incident_id": incident_id,
-        "data_quality": {
-            "dropped": false,
-            "drop_count": 0,
-            "throttled": false,
-            "missing": [],
-            "truncated": false,
-            "clock_confidence": "medium",
-            "notes": ["marker queued for adc-targetd recorder freeze"]
-        }
-    });
-    serde_json::to_writer_pretty(std::io::stdout(), &response)
+    let result = adc_core::recorder_marker_result_for_queued(
+        marker,
+        incident_id,
+        marker_path.display().to_string(),
+    );
+    adc_core::write_recorder_marker_result(&artifact_root, &result)
+        .map_err(|err| err.to_string())?;
+    serde_json::to_writer_pretty(std::io::stdout(), &result)
         .map_err(|err| format!("failed to serialize recorder marker freeze: {err}"))?;
     println!();
     Ok(())
@@ -174,6 +180,15 @@ fn recorder_incidents() -> Result<(), String> {
     let response = serde_json::json!({
         "schema_version": "obs.recorder_incident_list.v1",
         "incidents": incidents,
+        "data_quality": {
+            "dropped": false,
+            "drop_count": 0,
+            "throttled": false,
+            "missing": [],
+            "truncated": false,
+            "clock_confidence": "medium",
+            "notes": []
+        }
     });
     serde_json::to_writer_pretty(std::io::stdout(), &response)
         .map_err(|err| format!("failed to serialize recorder incidents: {err}"))?;
@@ -211,6 +226,7 @@ fn recorder_export_dataset(args: &[String]) -> Result<(), String> {
         .strip_prefix("profile=")
         .filter(|value| !value.trim().is_empty())
         .unwrap_or("unknown");
+    let selector_applied = false;
     let data_quality = if windows.is_empty() {
         serde_json::json!({
             "dropped": false,
@@ -226,7 +242,7 @@ fn recorder_export_dataset(args: &[String]) -> Result<(), String> {
             "dropped": false,
             "drop_count": 0,
             "throttled": false,
-            "missing": [],
+            "missing": ["selector filtering is not implemented; all local incidents were included"],
             "truncated": false,
             "clock_confidence": "medium",
             "notes": ["dataset manifest preserves refs, loss reports, and data-quality metadata"]
@@ -236,6 +252,7 @@ fn recorder_export_dataset(args: &[String]) -> Result<(), String> {
         "schema_version": "obs.dataset_manifest.v1",
         "dataset_id": format!("DS-{}", monotonic_now_ns()),
         "selector": selector,
+        "selector_applied": selector_applied,
         "dataset_types": ["benchmark", "regression"],
         "generated_at_mono_ns": monotonic_now_ns(),
         "recorder_policy_version": "default-memory-ring-budget",
@@ -254,17 +271,34 @@ fn recorder_export_dataset(args: &[String]) -> Result<(), String> {
 
 fn recorder_incident_get(args: &[String]) -> Result<(), String> {
     let incident_id = required_flag(args, "--incident-id")?;
+    adc_core::validate_recorder_file_segment(incident_id, "incident_id")
+        .map_err(|err| err.to_string())?;
     let artifact_root = adc_core::snapshot::default_artifact_root();
     let incident_dir = artifact_root.join("recorder/incidents").join(incident_id);
-    let marker: serde_json::Value = read_json_file(&incident_dir.join("marker.json"))?;
+    let marker: Option<serde_json::Value> =
+        read_optional_json_file(&incident_dir.join("marker.json"))?;
+    let trigger_event: Option<serde_json::Value> =
+        read_optional_json_file(&incident_dir.join("trigger_event.json"))?;
     let incident: serde_json::Value = read_json_file(&incident_dir.join("incident.json"))?;
     let frozen_window: serde_json::Value =
         read_json_file(&incident_dir.join("frozen_window.json"))?;
     let response = serde_json::json!({
+        "schema_version": "obs.recorder_incident_resolution.v1",
+        "incident_id": incident_id,
         "marker": marker,
+        "trigger_event": trigger_event,
         "incident": incident,
         "frozen_window": frozen_window,
-        "incident_dir": incident_dir,
+        "incident_dir": incident_dir.display().to_string(),
+        "data_quality": {
+            "dropped": false,
+            "drop_count": 0,
+            "throttled": false,
+            "missing": [],
+            "truncated": false,
+            "clock_confidence": "medium",
+            "notes": []
+        }
     });
     serde_json::to_writer_pretty(std::io::stdout(), &response)
         .map_err(|err| format!("failed to serialize recorder incident: {err}"))?;
@@ -278,13 +312,23 @@ fn list_recorder_incident_ids(artifact_root: &Path) -> Vec<String> {
     if let Ok(entries) = fs::read_dir(&root) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.join("incident.json").is_file() {
-                incidents.push(entry.file_name().to_string_lossy().to_string());
+            let incident_id = entry.file_name().to_string_lossy().to_string();
+            if path.join("incident.json").is_file()
+                && adc_core::validate_recorder_file_segment(&incident_id, "incident_id").is_ok()
+            {
+                incidents.push(incident_id);
             }
         }
     }
     incidents.sort();
     incidents
+}
+
+fn read_optional_json_file(path: &Path) -> Result<Option<serde_json::Value>, String> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    read_json_file(path).map(Some)
 }
 
 fn read_json_file(path: &Path) -> Result<serde_json::Value, String> {

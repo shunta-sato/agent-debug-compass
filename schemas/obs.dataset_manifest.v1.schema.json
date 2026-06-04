@@ -7,6 +7,7 @@
     "schema_version",
     "dataset_id",
     "selector",
+    "selector_applied",
     "dataset_types",
     "generated_at_mono_ns",
     "recorder_policy_version",
@@ -21,6 +22,7 @@
     "schema_version": {"type": "string", "enum": ["obs.dataset_manifest.v1"]},
     "dataset_id": {"type": "string", "minLength": 1},
     "selector": {"type": "string", "minLength": 1},
+    "selector_applied": {"type": "boolean"},
     "dataset_types": {
       "type": "array",
       "minItems": 1,

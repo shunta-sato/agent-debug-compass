@@ -160,6 +160,17 @@ triggers: []
         .expect("collector loss")
         .iter()
         .any(|loss| loss["collector_id"] == "memory.summary"));
+    let recorder_status: serde_json::Value = serde_json::from_slice(
+        &fs::read(temp.path().join("recorder/status.json")).expect("recorder status"),
+    )
+    .expect("recorder status json");
+    assert_eq!(recorder_status["schema_version"], "obs.recorder_status.v1");
+    assert!(recorder_status["buffer_status"]["signals"]
+        .as_array()
+        .expect("signals")
+        .iter()
+        .any(|signal| signal["signal_id"] == "memory.summary"
+            && signal["recorded_samples"].as_u64().unwrap_or(0) > 0));
 }
 
 #[test]
@@ -223,6 +234,21 @@ triggers: []
         .any(|note| note
             .as_str()
             .is_some_and(|note| note.contains("max_frozen_incidents"))));
+    let refused_result: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/markers/results/marker-storm-5.json"),
+        )
+        .expect("refused marker result"),
+    )
+    .expect("marker result json");
+    assert_eq!(
+        refused_result["schema_version"],
+        "obs.recorder_marker_result.v1"
+    );
+    assert_eq!(refused_result["status"], "refused");
+    assert_eq!(refused_result["reason"], "max_frozen_incidents_exceeded");
+    assert_eq!(refused_result["data_quality"]["throttled"], true);
 }
 
 fn assert_v2_top_level_layout(run_dir: &Path) {

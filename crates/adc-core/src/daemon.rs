@@ -15,10 +15,12 @@ use crate::{
     default_recorder_budget, default_target_id, drain_pending_recorder_markers, evaluate_trigger,
     freeze_recorder_marker, freeze_recorder_trigger, parse_meminfo, parse_net_dev, parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
-    snapshot, write_evidence_index, AdcError, AdcResult, ArtifactManifest, ClockSource,
-    DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget, OverheadSample, Profile,
-    RecorderRing, RecorderSample, RecorderSignalSample, TimeRangeNs, TriggerEvaluation,
-    TriggerInput,
+    recorder_marker_result_for_frozen, recorder_marker_result_for_refused,
+    recorder_ring_capacity_for_budget, recorder_status_for, snapshot, write_evidence_index,
+    write_recorder_marker_result, write_recorder_status_artifact, AdcError, AdcResult,
+    ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
+    OverheadSample, Profile, RecorderRing, RecorderSample, RecorderSignalSample, TimeRangeNs,
+    TriggerEvaluation, TriggerInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -171,9 +173,10 @@ pub fn run_service_for(
     let mut iterations = 0_u64;
     let mut previous_sample = None;
     let recorder_budget = default_recorder_budget();
+    let mut recorder_profile_id: Option<String> = None;
     let mut recorder_ring = RecorderRing::new(
         default_target_id(),
-        recorder_budget.max_samples_per_second as usize,
+        recorder_ring_capacity_for_budget(&recorder_budget),
         recorder_budget.max_retention_ms,
     );
     let mut summary_quality = DataQuality {
@@ -199,17 +202,40 @@ pub fn run_service_for(
         };
 
         let profile = load_profile(profile_dir, &profile_id)?;
+        if recorder_profile_id.as_deref() != Some(profile_id.as_str()) {
+            recorder_ring = RecorderRing::with_expected_signals(
+                default_target_id(),
+                recorder_ring_capacity_for_budget(&recorder_budget),
+                recorder_budget.max_retention_ms,
+                recorder_expected_signal_ids(&profile),
+            );
+            recorder_profile_id = Some(profile_id.clone());
+        }
         let sample = collect_live_sample(&profile);
         push_recorder_samples(&mut recorder_ring, &sample);
+        write_live_recorder_status(
+            artifact_root,
+            Some(&profile_id),
+            Some("recording"),
+            "recording",
+            &recorder_ring,
+            &recorder_budget,
+        )?;
         for marker in drain_pending_recorder_markers(artifact_root)? {
+            let incident_id = format!("INC-{}", marker.marker_id);
             if recorder_freeze_budget_exhausted(
                 frozen_incidents.len(),
                 &recorder_budget,
                 &mut summary_quality,
             ) {
+                let result = recorder_marker_result_for_refused(
+                    marker,
+                    incident_id,
+                    "max_frozen_incidents_exceeded",
+                );
+                write_recorder_marker_result(artifact_root, &result)?;
                 continue;
             }
-            let incident_id = format!("INC-{}", marker.marker_id);
             let window_id = format!("win-{}", marker.marker_id);
             freeze_recorder_marker(
                 artifact_root,
@@ -219,6 +245,8 @@ pub fn run_service_for(
                 &recorder_ring,
                 &recorder_budget,
             )?;
+            let result = recorder_marker_result_for_frozen(marker, incident_id.clone());
+            write_recorder_marker_result(artifact_root, &result)?;
             frozen_incidents.push(incident_id);
         }
         if let Some(matched) = evaluate_live_triggers(&profile, previous_sample.as_ref(), &sample)?
@@ -254,6 +282,18 @@ pub fn run_service_for(
     }
 
     let state = initialize_state(artifact_root)?;
+    write_live_recorder_status(
+        artifact_root,
+        state.active_profile.as_deref(),
+        Some("recording"),
+        if state.active_profile.is_some() {
+            "recording"
+        } else {
+            "disabled"
+        },
+        &recorder_ring,
+        &recorder_budget,
+    )?;
     Ok(ServiceRunSummary {
         state,
         captured_runs,
@@ -261,6 +301,26 @@ pub fn run_service_for(
         iterations,
         data_quality: summary_quality,
     })
+}
+
+fn write_live_recorder_status(
+    artifact_root: &Path,
+    active_profile: Option<&str>,
+    previous_state: Option<&str>,
+    recorder_state: &str,
+    ring: &RecorderRing,
+    budget: &crate::RecorderBudget,
+) -> AdcResult<()> {
+    let status = recorder_status_for(
+        default_target_id(),
+        active_profile,
+        previous_state,
+        recorder_state,
+        ring.status(),
+        budget.clone(),
+    );
+    write_recorder_status_artifact(artifact_root, &status)?;
+    Ok(())
 }
 
 fn default_state(artifact_root: &Path) -> DaemonState {
@@ -512,6 +572,25 @@ fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) {
         time_mono_ns: sample.time_mono_ns,
         signals,
     });
+}
+
+fn recorder_expected_signal_ids(profile: &Profile) -> Vec<String> {
+    let mut signal_ids = Vec::new();
+    for collector in &profile.always_on.collectors {
+        match collector.as_str() {
+            "cpu" => signal_ids.push("cpu.summary".to_string()),
+            "memory" => signal_ids.push("memory.summary".to_string()),
+            "network" => signal_ids.push("network.counters".to_string()),
+            "kmsg" => signal_ids.push("kmsg.cursor".to_string()),
+            "thermal" => signal_ids.push("thermal.zone".to_string()),
+            "cpufreq" => signal_ids.push("cpufreq.summary".to_string()),
+            "process" => signal_ids.push("process.topN".to_string()),
+            _ => {}
+        }
+    }
+    signal_ids.sort();
+    signal_ids.dedup();
+    signal_ids
 }
 
 fn recorder_freeze_budget_exhausted(

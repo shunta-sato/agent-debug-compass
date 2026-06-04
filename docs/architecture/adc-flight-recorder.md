@@ -48,7 +48,7 @@ ADC returns:
   incident_id
   estimated Tx window
   trigger events
-  pre/post bounded evidence
+  bounded incident-adjacent evidence
   observation coverage
   missing/truncated signals
   artifact refs
@@ -260,7 +260,7 @@ always-on:
   ultra-light semantic trickle
 
 triggered:
-  bounded pre/post window freeze
+  bounded incident-window freeze
 
 burst:
   short, policy-approved deepening after a trigger
@@ -353,7 +353,7 @@ Freezes bounded incident windows on trigger or retrospective mark.
 
 The frozen window includes:
 
-- pre/post time window,
+- retained pre-window time range in the current MVP,
 - trigger event refs,
 - source coverage,
 - missing/truncated signal accounting,
@@ -413,12 +413,15 @@ obs.recorder_status.v1
 obs.recorder_buffer_status.v1
 obs.recorder_budget.v1
 obs.recorder_marker.v1
+obs.recorder_marker_result.v1
+obs.recorder_incident_list.v1
 obs.recorder_incident.v1
+obs.recorder_incident_resolution.v1
 obs.recorder_frozen_window.v1
 obs.loss_report.v1
 obs.recorder_overhead.v1
 obs.trigger_policy.v1
-obs.trigger_event.v1
+obs.recorder_trigger_event.v1
 obs.anomaly_score.v1
 obs.label_event.v1
 obs.dataset_manifest.v1
@@ -431,15 +434,20 @@ obs.recorder_status.v1
 obs.recorder_buffer_status.v1
 obs.recorder_budget.v1
 obs.recorder_marker.v1
+obs.recorder_marker_result.v1
+obs.recorder_incident_list.v1
 obs.recorder_incident.v1
+obs.recorder_incident_resolution.v1
 obs.recorder_frozen_window.v1
 obs.loss_report.v1
 obs.recorder_overhead.v1
+obs.recorder_trigger_event.v1
+obs.dataset_manifest.v1
 ```
 
-`obs.trigger_policy.v1`, `obs.trigger_event.v1`, and `obs.anomaly_score.v1`
-are planned for the automatic trigger and benchmark phases. `obs.label_event.v1`
-and `obs.dataset_manifest.v1` are planned for dataset readiness.
+`obs.trigger_policy.v1` and `obs.anomaly_score.v1` are deferred until richer
+trigger policy and benchmark work. `obs.label_event.v1` and public sharing
+dataset policy remain deferred.
 
 Each contract follows the executable contract gate:
 
@@ -571,12 +579,17 @@ continuous_ring:
 frozen_incident_bundle:
   persistence: bounded_artifact_bundle
   survives_daemon_restart: true_if_bundle_written
-  survives_target_reboot: true_if_bundle_written_and_storage_survives
-  bounded_by: max_freeze_bytes, max_frozen_incidents, retention_policy
+  survives_target_reboot: storage_dependent_not_claimed_by_mvp
+  write_durability: best_effort_no_fsync
+  bounded_by: max_freeze_bytes, max_disk_bytes, max_frozen_incidents, retention_policy
 ```
 
 This is explicitly not a disk-backed rolling ring. It is a bounded export of a
 selected incident window after marker or trigger selection.
+
+The current MVP reports frozen incident target-reboot survival conservatively as
+`false`; later storage-specific integrations may raise that only with measured
+durability and retention guarantees.
 
 ## Budget Contract
 
@@ -776,8 +789,8 @@ The recorder must preserve enough evidence for an Agent to distinguish:
 2. External app marker can trigger or enrich an incident.
 3. Retrospective marker at Ty can search retained buffers and return explicit
    coverage/missing evidence.
-4. Incident windows include bounded pre/post evidence and do not dump unbounded
-   raw logs.
+4. Incident windows include bounded retained pre-window evidence in the current
+   MVP and do not dump unbounded raw logs.
 5. Budgets are enforced or explicit degradation is recorded.
 6. Recorder self-overhead appears in status and incident windows.
 7. Missing or unavailable signals are represented through observation coverage

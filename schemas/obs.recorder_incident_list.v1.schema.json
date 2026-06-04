@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_incident_list.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "incidents", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_incident_list.v1"]},
+    "incidents": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

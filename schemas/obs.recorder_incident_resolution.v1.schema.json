@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_incident_resolution.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "incident_id",
+    "marker",
+    "trigger_event",
+    "incident",
+    "frozen_window",
+    "incident_dir",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_incident_resolution.v1"]},
+    "incident_id": {"type": "string", "minLength": 1},
+    "marker": {
+      "anyOf": [
+        {"$ref": "obs.recorder_marker.v1.schema.json"},
+        {"type": "null"}
+      ]
+    },
+    "trigger_event": {
+      "anyOf": [
+        {"$ref": "obs.recorder_trigger_event.v1.schema.json"},
+        {"type": "null"}
+      ]
+    },
+    "incident": {"$ref": "obs.recorder_incident.v1.schema.json"},
+    "frozen_window": {"$ref": "obs.recorder_frozen_window.v1.schema.json"},
+    "incident_dir": {"type": "string", "minLength": 1},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

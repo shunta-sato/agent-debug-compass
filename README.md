@@ -147,8 +147,8 @@ loss semantics, and dataset-ready refs.
 
 ```bash
 adc arm --profile pi5_basic
-adc-targetd --service-for-ms 1000 &
 adc recorder mark --symptom "camera frame drop observed around now"
+adc-targetd --service-for-ms 1000
 adc recorder incidents
 adc recorder incident get --incident-id INC-marker-...
 adc recorder export-dataset --selector profile=camera_inference_degradation

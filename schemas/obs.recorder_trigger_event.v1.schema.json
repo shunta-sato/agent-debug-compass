@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_trigger_event.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "trigger_name",
+    "trigger_time_mono_ns",
+    "agent_contract",
+    "root_cause_claim",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_trigger_event.v1"]},
+    "trigger_name": {"type": "string", "minLength": 1},
+    "trigger_time_mono_ns": {"type": "integer", "minimum": 0},
+    "agent_contract": {"type": "string", "enum": ["preservation_reason_only"]},
+    "root_cause_claim": {"type": "boolean", "enum": [false]},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

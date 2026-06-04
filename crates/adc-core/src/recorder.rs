@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -26,12 +26,13 @@ impl RecorderState {
         match value {
             "disabled" => Self::Disabled,
             "armed" => Self::Armed,
+            "recording" => Self::Recording,
             "degraded" => Self::Degraded,
             "freezing" => Self::Freezing,
             "frozen" => Self::Frozen,
             "over_budget" => Self::OverBudget,
             "error" => Self::Error,
-            _ => Self::Recording,
+            _ => Self::Error,
         }
     }
 }
@@ -140,6 +141,18 @@ pub struct RecorderStatus {
     pub buffer_status: RecorderBufferStatus,
     pub budget: RecorderBudget,
     pub overhead: RecorderOverhead,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecorderMarkerResult {
+    pub schema_version: String,
+    pub marker: RecorderMarker,
+    pub status: String,
+    pub reason: String,
+    pub pending_marker_ref: Option<String>,
+    pub incident_ref: Option<String>,
+    pub expected_incident_id: String,
     pub data_quality: DataQuality,
 }
 
@@ -254,8 +267,128 @@ pub struct RecorderTriggerFreeze {
     pub run_dir: PathBuf,
 }
 
+pub fn recorder_status_path(artifact_root: impl AsRef<Path>) -> PathBuf {
+    artifact_root.as_ref().join("recorder/status.json")
+}
+
+pub fn write_recorder_status_artifact(
+    artifact_root: impl AsRef<Path>,
+    status: &RecorderStatus,
+) -> AdcResult<PathBuf> {
+    let path = recorder_status_path(artifact_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            AdcError::Artifact(format!(
+                "failed to create recorder status directory {}: {err}",
+                parent.display()
+            ))
+        })?;
+    }
+    write_json(&path, status)?;
+    Ok(path)
+}
+
+pub fn read_recorder_status_artifact(artifact_root: impl AsRef<Path>) -> AdcResult<RecorderStatus> {
+    let path = recorder_status_path(artifact_root);
+    let bytes = fs::read(&path).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to read recorder status {}: {err}",
+            path.display()
+        ))
+    })?;
+    serde_json::from_slice(&bytes).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to parse recorder status {}: {err}",
+            path.display()
+        ))
+    })
+}
+
 pub fn recorder_pending_marker_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
     artifact_root.as_ref().join("recorder/markers/pending")
+}
+
+pub fn recorder_marker_result_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
+    artifact_root.as_ref().join("recorder/markers/results")
+}
+
+pub fn write_recorder_marker_result(
+    artifact_root: impl AsRef<Path>,
+    result: &RecorderMarkerResult,
+) -> AdcResult<PathBuf> {
+    validate_recorder_file_segment(&result.marker.marker_id, "marker_id")?;
+    let result_dir = recorder_marker_result_dir(artifact_root);
+    fs::create_dir_all(&result_dir).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to create recorder marker result directory {}: {err}",
+            result_dir.display()
+        ))
+    })?;
+    let path = result_dir.join(format!("{}.json", result.marker.marker_id));
+    write_json(&path, result)?;
+    Ok(path)
+}
+
+pub fn recorder_marker_result_for_queued(
+    marker: RecorderMarker,
+    expected_incident_id: String,
+    pending_marker_ref: String,
+) -> RecorderMarkerResult {
+    RecorderMarkerResult {
+        schema_version: "obs.recorder_marker_result.v1".to_string(),
+        marker,
+        status: "queued".to_string(),
+        reason: "queued_for_adc_targetd_recorder_freeze".to_string(),
+        pending_marker_ref: Some(pending_marker_ref),
+        incident_ref: None,
+        expected_incident_id,
+        data_quality: DataQuality {
+            clock_confidence: ClockConfidence::Medium,
+            notes: vec!["marker queued for adc-targetd recorder freeze".to_string()],
+            ..Default::default()
+        },
+    }
+}
+
+pub fn recorder_marker_result_for_frozen(
+    marker: RecorderMarker,
+    incident_id: String,
+) -> RecorderMarkerResult {
+    RecorderMarkerResult {
+        schema_version: "obs.recorder_marker_result.v1".to_string(),
+        marker,
+        status: "frozen".to_string(),
+        reason: "incident_window_frozen".to_string(),
+        pending_marker_ref: None,
+        incident_ref: Some(format!(
+            "artifact://recorder/incidents/{incident_id}/incident.json"
+        )),
+        expected_incident_id: incident_id.clone(),
+        data_quality: medium_quality(),
+    }
+}
+
+pub fn recorder_marker_result_for_refused(
+    marker: RecorderMarker,
+    expected_incident_id: String,
+    reason: impl Into<String>,
+) -> RecorderMarkerResult {
+    RecorderMarkerResult {
+        schema_version: "obs.recorder_marker_result.v1".to_string(),
+        marker,
+        status: "refused".to_string(),
+        reason: reason.into(),
+        pending_marker_ref: None,
+        incident_ref: None,
+        expected_incident_id,
+        data_quality: DataQuality {
+            throttled: true,
+            clock_confidence: ClockConfidence::Medium,
+            missing: vec!["incident window was not frozen due to recorder budget".to_string()],
+            notes: vec!["pending marker was consumed and recorded as refused".to_string()],
+            ..Default::default()
+        },
+    }
 }
 
 pub fn write_pending_recorder_marker(
@@ -330,29 +463,41 @@ pub struct RecorderRing {
     retention_ms: u64,
     samples: Vec<RecorderSample>,
     dropped_by_signal: BTreeMap<String, u64>,
+    expected_signal_ids: BTreeSet<String>,
 }
 
 impl RecorderRing {
     pub fn new(target_id: impl Into<String>, capacity: usize, retention_ms: u64) -> Self {
+        Self::with_expected_signals(
+            target_id,
+            capacity,
+            retention_ms,
+            std::iter::empty::<String>(),
+        )
+    }
+
+    pub fn with_expected_signals(
+        target_id: impl Into<String>,
+        capacity: usize,
+        retention_ms: u64,
+        expected_signal_ids: impl IntoIterator<Item = String>,
+    ) -> Self {
         Self {
             target_id: target_id.into(),
             capacity: capacity.max(1),
             retention_ms,
             samples: Vec::new(),
             dropped_by_signal: BTreeMap::new(),
+            expected_signal_ids: expected_signal_ids.into_iter().collect(),
         }
     }
 
     pub fn push(&mut self, sample: RecorderSample) {
         while self.samples.len() >= self.capacity {
-            if let Some(removed) = self.samples.first().cloned() {
-                for signal in removed.signals {
-                    *self.dropped_by_signal.entry(signal.signal_id).or_default() += 1;
-                }
-            }
-            self.samples.remove(0);
+            self.drop_oldest_sample();
         }
         self.samples.push(sample);
+        self.evict_expired_samples();
     }
 
     pub fn samples(&self) -> &[RecorderSample] {
@@ -360,21 +505,39 @@ impl RecorderRing {
     }
 
     pub fn status(&self) -> RecorderBufferStatus {
-        let mut counts: BTreeMap<String, u64> = BTreeMap::new();
+        let mut recorded_by_signal: BTreeMap<String, u64> = BTreeMap::new();
         for sample in &self.samples {
             for signal in &sample.signals {
-                *counts.entry(signal.signal_id.clone()).or_default() += 1;
+                *recorded_by_signal
+                    .entry(signal.signal_id.clone())
+                    .or_default() += 1;
             }
         }
-        for (signal_id, dropped) in &self.dropped_by_signal {
-            counts.entry(signal_id.clone()).or_insert(*dropped);
-        }
+        let signal_ids = recorded_by_signal
+            .keys()
+            .chain(self.dropped_by_signal.keys())
+            .chain(self.expected_signal_ids.iter())
+            .cloned()
+            .collect::<BTreeSet<_>>();
 
         let mut signals = Vec::new();
         let mut total_dropped = 0_u64;
-        for (signal_id, recorded) in counts {
+        let mut buffer_quality = data_quality_for_drop_count(0);
+        for signal_id in signal_ids {
+            let recorded = recorded_by_signal.get(&signal_id).copied().unwrap_or(0);
             let dropped = self.dropped_by_signal.get(&signal_id).copied().unwrap_or(0);
             total_dropped = total_dropped.saturating_add(dropped);
+            let expected_but_absent =
+                self.expected_signal_ids.contains(&signal_id) && recorded == 0 && dropped == 0;
+            let mut signal_quality = data_quality_for_drop_count(dropped);
+            if expected_but_absent {
+                signal_quality.missing.push(format!(
+                    "expected recorder signal {signal_id} has no retained samples"
+                ));
+                buffer_quality.missing.push(format!(
+                    "expected recorder signal {signal_id} has no retained samples"
+                ));
+            }
             signals.push(RecorderSignalStatus {
                 signal_id,
                 configured_interval_ms: 1000,
@@ -382,9 +545,15 @@ impl RecorderRing {
                 recorded_samples: recorded,
                 dropped_samples: dropped,
                 gap_ranges: Vec::new(),
-                degraded: dropped > 0,
-                data_quality: data_quality_for_drop_count(dropped),
+                degraded: dropped > 0 || expected_but_absent,
+                data_quality: signal_quality,
             });
+        }
+        let dropped_quality = data_quality_for_drop_count(total_dropped);
+        if dropped_quality.dropped {
+            buffer_quality.dropped = true;
+            buffer_quality.drop_count = dropped_quality.drop_count;
+            buffer_quality.notes.extend(dropped_quality.notes);
         }
 
         RecorderBufferStatus {
@@ -401,7 +570,32 @@ impl RecorderRing {
                 end: self.samples.last().map(|sample| sample.time_mono_ns),
             },
             signals,
-            data_quality: data_quality_for_drop_count(total_dropped),
+            data_quality: buffer_quality,
+        }
+    }
+
+    fn drop_oldest_sample(&mut self) {
+        if self.samples.is_empty() {
+            return;
+        }
+        let removed = self.samples.remove(0);
+        for signal in removed.signals {
+            *self.dropped_by_signal.entry(signal.signal_id).or_default() += 1;
+        }
+    }
+
+    fn evict_expired_samples(&mut self) {
+        let Some(newest_time) = self.samples.last().map(|sample| sample.time_mono_ns) else {
+            return;
+        };
+        let retention_ns = self.retention_ms.saturating_mul(1_000_000);
+        let cutoff = newest_time.saturating_sub(retention_ns);
+        while self
+            .samples
+            .first()
+            .is_some_and(|sample| sample.time_mono_ns < cutoff)
+        {
+            self.drop_oldest_sample();
         }
     }
 }
@@ -449,6 +643,9 @@ pub fn freeze_recorder_marker(
     ring: &RecorderRing,
     budget: &RecorderBudget,
 ) -> AdcResult<RecorderFreeze> {
+    validate_recorder_file_segment(incident_id, "incident_id")?;
+    validate_recorder_file_segment(window_id, "window_id")?;
+    validate_recorder_file_segment(&marker.marker_id, "marker_id")?;
     let incident_dir = artifact_root
         .as_ref()
         .join("recorder")
@@ -462,7 +659,9 @@ pub fn freeze_recorder_marker(
     })?;
 
     let buffer_status = ring.status();
-    let loss_report = loss_report_for_buffer(window_id, &buffer_status);
+    let (freeze_samples, sample_quality) = samples_within_freeze_budget(ring.samples(), budget)?;
+    let loss_report =
+        loss_report_for_buffer_with_quality(window_id, &buffer_status, sample_quality);
     let start = ring
         .samples()
         .first()
@@ -505,11 +704,14 @@ pub fn freeze_recorder_marker(
         persistence: FrozenWindowPersistence {
             persistence_mode: "bounded_artifact_bundle".to_string(),
             survives_daemon_restart: true,
-            survives_target_reboot: true,
+            survives_target_reboot: false,
             bounded_by: vec![
                 "max_freeze_bytes".to_string(),
+                "max_disk_bytes".to_string(),
                 "max_frozen_incidents".to_string(),
                 "retention_policy".to_string(),
+                "target_reboot_survival_storage_dependent".to_string(),
+                "write_durability_best_effort_no_fsync".to_string(),
             ],
         },
         artifact_refs,
@@ -537,7 +739,7 @@ pub fn freeze_recorder_marker(
     };
 
     write_json(&incident_dir.join("marker.json"), marker)?;
-    write_jsonl(&incident_dir.join("samples.jsonl"), ring.samples())?;
+    write_jsonl(&incident_dir.join("samples.jsonl"), &freeze_samples)?;
     write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
     write_json(&incident_dir.join("frozen_window.json"), &frozen_window)?;
     write_json(&incident_dir.join("incident.json"), &incident)?;
@@ -559,6 +761,8 @@ pub fn freeze_recorder_trigger(
     ring: &RecorderRing,
     budget: &RecorderBudget,
 ) -> AdcResult<RecorderTriggerFreeze> {
+    validate_recorder_file_segment(incident_id, "incident_id")?;
+    validate_recorder_file_segment(window_id, "window_id")?;
     validate_preservation_reason_name(trigger_name)?;
     let incident_dir = artifact_root
         .as_ref()
@@ -573,7 +777,9 @@ pub fn freeze_recorder_trigger(
     })?;
 
     let buffer_status = ring.status();
-    let loss_report = loss_report_for_buffer(window_id, &buffer_status);
+    let (freeze_samples, sample_quality) = samples_within_freeze_budget(ring.samples(), budget)?;
+    let loss_report =
+        loss_report_for_buffer_with_quality(window_id, &buffer_status, sample_quality);
     let start = ring
         .samples()
         .first()
@@ -616,11 +822,14 @@ pub fn freeze_recorder_trigger(
         persistence: FrozenWindowPersistence {
             persistence_mode: "bounded_artifact_bundle".to_string(),
             survives_daemon_restart: true,
-            survives_target_reboot: true,
+            survives_target_reboot: false,
             bounded_by: vec![
                 "max_freeze_bytes".to_string(),
+                "max_disk_bytes".to_string(),
                 "max_frozen_incidents".to_string(),
                 "retention_policy".to_string(),
+                "target_reboot_survival_storage_dependent".to_string(),
+                "write_durability_best_effort_no_fsync".to_string(),
             ],
         },
         artifact_refs,
@@ -650,13 +859,15 @@ pub fn freeze_recorder_trigger(
     write_json(
         &incident_dir.join("trigger_event.json"),
         &serde_json::json!({
+            "schema_version": "obs.recorder_trigger_event.v1",
             "trigger_name": trigger_name,
             "trigger_time_mono_ns": trigger_time_mono_ns,
             "agent_contract": "preservation_reason_only",
-            "root_cause_claim": false
+            "root_cause_claim": false,
+            "data_quality": medium_quality()
         }),
     )?;
-    write_jsonl(&incident_dir.join("samples.jsonl"), ring.samples())?;
+    write_jsonl(&incident_dir.join("samples.jsonl"), &freeze_samples)?;
     write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
     write_json(&incident_dir.join("frozen_window.json"), &frozen_window)?;
     write_json(&incident_dir.join("incident.json"), &incident)?;
@@ -694,8 +905,11 @@ fn validate_preservation_reason_name(name: &str) -> AdcResult<()> {
     Ok(())
 }
 
-fn loss_report_for_buffer(window_id: &str, status: &RecorderBufferStatus) -> LossReport {
-    let mut loss_quality = medium_quality();
+fn loss_report_for_buffer_with_quality(
+    window_id: &str,
+    status: &RecorderBufferStatus,
+    mut loss_quality: DataQuality,
+) -> LossReport {
     let mut collector_loss = Vec::new();
     let mut total_dropped = 0_u64;
     for signal in &status.signals {
@@ -706,6 +920,15 @@ fn loss_report_for_buffer(window_id: &str, status: &RecorderBufferStatus) -> Los
         }
         if signal.recorded_samples == 0 {
             reasons.push("collector_absent_or_no_samples".to_string());
+        }
+        if signal.data_quality.truncated {
+            reasons.push("freeze_byte_budget_truncated".to_string());
+        }
+        if !signal.data_quality.missing.is_empty() {
+            reasons.push("expected_signal_missing".to_string());
+            loss_quality
+                .missing
+                .extend(signal.data_quality.missing.clone());
         }
         collector_loss.push(CollectorLoss {
             collector_id: signal.signal_id.clone(),
@@ -746,6 +969,45 @@ fn loss_report_for_buffer(window_id: &str, status: &RecorderBufferStatus) -> Los
     }
 }
 
+fn samples_within_freeze_budget(
+    samples: &[RecorderSample],
+    budget: &RecorderBudget,
+) -> AdcResult<(Vec<RecorderSample>, DataQuality)> {
+    let max_bytes = budget.max_freeze_bytes.min(budget.max_disk_bytes).max(1);
+    let mut selected = Vec::new();
+    let mut total_bytes = 0_u64;
+    for sample in samples.iter().rev() {
+        let line = serde_json::to_string(sample).map_err(|err| {
+            AdcError::Artifact(format!("recorder sample serialization failed: {err}"))
+        })?;
+        let line_bytes = (line.len() + 1) as u64;
+        if !selected.is_empty() && total_bytes.saturating_add(line_bytes) > max_bytes {
+            break;
+        }
+        if selected.is_empty() && line_bytes > max_bytes {
+            break;
+        }
+        total_bytes = total_bytes.saturating_add(line_bytes);
+        selected.push(sample.clone());
+    }
+    selected.reverse();
+
+    let mut data_quality = medium_quality();
+    if selected.len() < samples.len() {
+        data_quality.truncated = true;
+        data_quality.notes.push(format!(
+            "freeze samples truncated to max_freeze_bytes={} and max_disk_bytes={}",
+            budget.max_freeze_bytes, budget.max_disk_bytes
+        ));
+    }
+    if samples.is_empty() {
+        data_quality
+            .missing
+            .push("no retained recorder samples were available at freeze time".to_string());
+    }
+    Ok((selected, data_quality))
+}
+
 fn write_json(path: &Path, value: &impl Serialize) -> AdcResult<()> {
     let bytes = serde_json::to_vec_pretty(value)
         .map_err(|err| AdcError::Artifact(format!("recorder json serialization failed: {err}")))?;
@@ -766,7 +1028,7 @@ fn write_jsonl(path: &Path, samples: &[RecorderSample]) -> AdcResult<()> {
         .map_err(|err| AdcError::Artifact(format!("failed to write {}: {err}", path.display())))
 }
 
-fn validate_recorder_file_segment(value: &str, label: &str) -> AdcResult<()> {
+pub fn validate_recorder_file_segment(value: &str, label: &str) -> AdcResult<()> {
     if value.trim().is_empty() {
         return Err(AdcError::Artifact(format!("{label} must not be empty")));
     }
@@ -779,6 +1041,16 @@ fn validate_recorder_file_segment(value: &str, label: &str) -> AdcResult<()> {
         )));
     }
     Ok(())
+}
+
+pub fn recorder_ring_capacity_for_budget(budget: &RecorderBudget) -> usize {
+    const ESTIMATED_SAMPLE_BYTES: u64 = 256;
+    let retention_seconds = budget.max_retention_ms.saturating_add(999) / 1000;
+    let capacity_by_rate = budget
+        .max_samples_per_second
+        .saturating_mul(retention_seconds.max(1));
+    let capacity_by_memory = budget.max_memory_bytes / ESTIMATED_SAMPLE_BYTES;
+    capacity_by_rate.min(capacity_by_memory).max(1) as usize
 }
 
 pub fn default_recorder_budget() -> RecorderBudget {
@@ -812,7 +1084,7 @@ pub fn default_recorder_budget() -> RecorderBudget {
 pub fn recorder_status_for(
     target_id: impl Into<String>,
     active_profile: Option<&str>,
-    previous_state: &str,
+    previous_state: Option<&str>,
     recorder_state: &str,
     buffer_status: RecorderBufferStatus,
     budget: RecorderBudget,
@@ -823,7 +1095,7 @@ pub fn recorder_status_for(
         schema_version: "obs.recorder_status.v1".to_string(),
         target_id: target_id.clone(),
         recorder_state: RecorderState::parse(recorder_state),
-        previous_state: Some(RecorderState::parse(previous_state)),
+        previous_state: previous_state.map(RecorderState::parse),
         active_profile: active_profile.map(str::to_string),
         armed: active_profile.is_some(),
         storage: RecorderStorageStatus {

@@ -38,6 +38,10 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.recorder_marker.v1.generated.json",
         &recorder_mark["marker"],
     );
+    write_fixture(
+        "cli.obs.recorder_marker_result.v1.generated.json",
+        &recorder_mark,
+    );
     let marker = adc_core::marker_at_received_time(
         "marker-contract-cli",
         "operator",
@@ -61,6 +65,21 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         &adc_core::default_recorder_budget(),
     )
     .expect("freeze recorder fixture");
+    adc_core::freeze_recorder_trigger(
+        temp.path(),
+        "INC-TRIGGER-contract-cli",
+        "win-trigger-contract-cli",
+        "kmsg_warning_pattern",
+        1_000,
+        &ring,
+        &adc_core::default_recorder_budget(),
+    )
+    .expect("freeze trigger recorder fixture");
+    let recorder_incidents = command_json(temp.path(), ["recorder", "incidents"]);
+    write_fixture(
+        "cli.obs.recorder_incident_list.v1.generated.json",
+        &recorder_incidents,
+    );
     let recorder_incident = command_json(
         temp.path(),
         [
@@ -70,6 +89,10 @@ fn generated_cli_outputs_validate_against_public_contracts() {
             "--incident-id",
             "INC-marker-contract-cli",
         ],
+    );
+    write_fixture(
+        "cli.obs.recorder_incident_resolution.v1.generated.json",
+        &recorder_incident,
     );
     write_fixture(
         "cli.obs.recorder_incident.v1.generated.json",
@@ -82,6 +105,20 @@ fn generated_cli_outputs_validate_against_public_contracts() {
     write_fixture(
         "cli.obs.loss_report.v1.generated.json",
         &recorder_incident["frozen_window"]["loss_report"],
+    );
+    let recorder_trigger_incident = command_json(
+        temp.path(),
+        [
+            "recorder",
+            "incident",
+            "get",
+            "--incident-id",
+            "INC-TRIGGER-contract-cli",
+        ],
+    );
+    write_fixture(
+        "cli.obs.recorder_trigger_event.v1.generated.json",
+        &recorder_trigger_incident["trigger_event"],
     );
     let dataset_manifest = command_json(
         temp.path(),

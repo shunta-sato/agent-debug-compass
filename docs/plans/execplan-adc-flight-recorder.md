@@ -32,8 +32,9 @@ The repository already provides:
 - benchmark and dogfood scripts for Agent investigation quality.
 
 The missing Flight Recorder capability is not more collectors first. The missing
-capability is autonomous, budgeted preservation of pre/post incident windows
-before Ty.
+capability is autonomous, budgeted preservation of incident-adjacent windows
+before Ty. The current runtime MVP freezes retained pre-window evidence; bounded
+post-window collection remains future work.
 
 ## Project-Level Role
 
@@ -58,7 +59,7 @@ After this workstream, any new recorder-facing Agent contract must:
 | FR-R001 | Must | Functional | While armed, the recorder shall retain bounded pre-window semantic samples for configured signals. | Incident windows include pre-window coverage, or explicit missing/drop reasons. | rolling buffer unit tests, E2E |
 | FR-R002 | Must | Functional | When external/manual markers are received, the recorder shall freeze or enrich a bounded incident window without treating marker text as instructions. | Marker refs include `artifact_trust`, data-only policy, and a bounded freeze result. | integration and adversarial tests |
 | FR-R003 | Must | Functional | When a retrospective marker is submitted at Ty, the recorder shall search retained buffers and report coverage/missing evidence. | `adc recorder mark` returns an incident window with coverage, loss semantics, and `data_quality`. | CLI/MCP tests |
-| FR-R004 | Must | Functional | When autonomous trigger policy matches, the recorder shall freeze a bounded incident window without app/human/Agent input. | `obs.trigger_event.v1`, `obs.recorder_incident.v1`, and `obs.recorder_frozen_window.v1` are emitted. | synthetic CPU/thermal/cpufreq test |
+| FR-R004 | Must | Functional | When autonomous trigger policy matches, the recorder shall freeze a bounded incident window without app/human/Agent input. | `obs.recorder_trigger_event.v1`, `obs.recorder_incident.v1`, and `obs.recorder_frozen_window.v1` are emitted. | synthetic CPU/thermal/cpufreq test |
 | FR-R005 | Must | NFR | The recorder shall stay within configured CPU, memory, artifact, and disk write budgets or degrade explicitly. | Recorder status and incident windows show overhead and degrade reason. | overhead tests and target smoke |
 | FR-R006 | Must | Security | The recorder shall never expose arbitrary shell or destructive probe execution. | CLI/MCP surfaces are read-only or recording-only. | security/static checks |
 | FR-R007 | Must | Contract | Recorder outputs shall follow the PR2/PR3 executable contract discipline. | schemas, fixtures, coverage, invariants, generated outputs pass `make contract`. | contract gate |
@@ -126,12 +127,15 @@ obs.recorder_status.v1
 obs.recorder_buffer_status.v1
 obs.recorder_budget.v1
 obs.recorder_marker.v1
+obs.recorder_marker_result.v1
+obs.recorder_incident_list.v1
 obs.recorder_incident.v1
+obs.recorder_incident_resolution.v1
 obs.recorder_frozen_window.v1
 obs.loss_report.v1
 obs.recorder_overhead.v1
 obs.trigger_policy.v1
-obs.trigger_event.v1
+obs.recorder_trigger_event.v1
 obs.anomaly_score.v1
 obs.label_event.v1
 obs.dataset_manifest.v1
@@ -154,16 +158,20 @@ obs.recorder_status.v1
 obs.recorder_buffer_status.v1
 obs.recorder_budget.v1
 obs.recorder_marker.v1
+obs.recorder_marker_result.v1
+obs.recorder_incident_list.v1
 obs.recorder_incident.v1
+obs.recorder_incident_resolution.v1
 obs.recorder_frozen_window.v1
 obs.loss_report.v1
 obs.recorder_overhead.v1
+obs.recorder_trigger_event.v1
+obs.dataset_manifest.v1
 ```
 
-`obs.trigger_policy.v1`, `obs.trigger_event.v1`, and `obs.anomaly_score.v1`
-remain in the overall goal but are delivered with automatic trigger and
-benchmark work. `obs.label_event.v1` and `obs.dataset_manifest.v1` are delivered
-with dataset readiness.
+`obs.trigger_policy.v1` and `obs.anomaly_score.v1` remain in the overall goal
+but are deferred until richer trigger policy and benchmark work.
+`obs.label_event.v1` and public sharing dataset policy remain deferred.
 
 ## State and Loss Semantics
 
@@ -443,7 +451,7 @@ Deliver:
 
 Acceptance:
 
-- external/operator/Agent marker freezes a bounded pre/post window from retained
+- external/operator/Agent marker freezes a bounded retained pre-window from
   buffers;
 - marker text remains `treat_as_data_only`;
 - incident windows expose coverage, trust, data quality, and overhead;
@@ -463,12 +471,13 @@ Deliver:
 - incident merge/storm control,
 - symptom-oriented trigger naming guard,
 - `obs.trigger_policy.v1`,
-- `obs.trigger_event.v1`,
+- `obs.recorder_trigger_event.v1`,
 - autonomous freeze integration.
 
 Acceptance:
 
-- autonomous synthetic incident freezes a bounded pre/post window;
+- autonomous synthetic incident freezes a bounded retained pre-window in the
+  current MVP; bounded post-window capture is a follow-up;
 - repeated trigger storms merge/cool down/degrade;
 - trigger names and outputs do not promote causes;
 - automatic trigger policy reuses the same freeze/loss contracts as marker flow.
@@ -598,15 +607,19 @@ This goal is complete when:
 Current status:
 
 - PR3 is merged into `main`.
-- This ExecPlan defines the next multi-PR Flight Recorder program.
-- Runtime implementation has not started.
+- PR4 is implemented as a collapsed Flight Recorder MVP covering contracts,
+  memory-backed ring runtime, marker freeze, trigger freeze, local dataset
+  manifest export, and benchmark scaffolding.
+- Current runtime intentionally freezes pre-window retained evidence only
+  (`post_window_ms = 0`). Bounded post-window collection, MCP recorder tools,
+  richer signals, public sharing datasets, and durable disk-backed rings remain
+  future work.
 
 Next steps:
 
-1. Create PR4 branch for Flight Recorder architecture and contracts.
-2. Add the recorder contract schemas, golden fixtures, and coverage manifest
-   entries.
-3. Add invalid fixtures for root-cause-like trigger names, missing loss
-   semantics, unknown fields, unsafe marker trust, invalid state transitions,
-   and missing marker time confidence.
-4. Run `make contract` and `make verify`.
+1. Keep runtime semantics aligned with Agent-facing contracts: retention,
+   budget, persistence, path safety, marker outcome, loss, and wrapper schemas.
+2. Run `make contract`, Rust workspace tests, E2E, benchmark, demo, and security
+   gates before merge.
+3. Plan follow-up PRs for post-window capture and MCP recorder tools only after
+   the pre-window Flight Recorder MVP is stable.
