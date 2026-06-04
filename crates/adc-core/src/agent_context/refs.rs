@@ -12,6 +12,13 @@ pub fn resolve_agent_ref(
     validate_segment(run_id, "run_id")?;
     if ref_uri.starts_with("artifact://raw/") {
         let slice = crate::read_raw_slice(artifact_root, run_id, ref_uri, limit)?;
+        let text = slice.lines.join("\n");
+        let artifact_trust = crate::classify_artifact_trust(
+            ref_uri,
+            crate::content_class_for_raw_ref(ref_uri),
+            &text,
+            &slice.data_quality,
+        );
         return Ok(AgentRefResolution {
             run_id: run_id.to_string(),
             ref_uri: ref_uri.to_string(),
@@ -20,7 +27,8 @@ pub fn resolve_agent_ref(
             returned_lines: slice.returned_lines,
             total_lines: slice.total_lines,
             truncated: slice.truncated,
-            text: slice.lines.join("\n"),
+            text,
+            artifact_trust,
             data_quality: slice.data_quality,
         });
     }
@@ -58,6 +66,13 @@ pub fn resolve_agent_ref(
             all_lines.len()
         ));
     }
+    let text = lines.join("\n");
+    let artifact_trust = crate::classify_artifact_trust(
+        ref_uri,
+        crate::content_class_for_ref(ref_kind, content_type),
+        &text,
+        &data_quality,
+    );
     Ok(AgentRefResolution {
         run_id: run_id.to_string(),
         ref_uri: ref_uri.to_string(),
@@ -66,7 +81,8 @@ pub fn resolve_agent_ref(
         returned_lines: lines.len(),
         total_lines: all_lines.len(),
         truncated,
-        text: lines.join("\n"),
+        text,
+        artifact_trust,
         data_quality,
     })
 }
@@ -114,6 +130,13 @@ pub fn resolve_global_agent_ref(
             all_lines.len()
         ));
     }
+    let text = lines.join("\n");
+    let artifact_trust = crate::classify_artifact_trust(
+        ref_uri,
+        crate::content_class_for_ref("service_investigation", "application/json"),
+        &text,
+        &data_quality,
+    );
     Ok(AgentRefResolution {
         run_id: "global".to_string(),
         ref_uri: ref_uri.to_string(),
@@ -122,7 +145,8 @@ pub fn resolve_global_agent_ref(
         returned_lines: lines.len(),
         total_lines: all_lines.len(),
         truncated,
-        text: lines.join("\n"),
+        text,
+        artifact_trust,
         data_quality,
     })
 }

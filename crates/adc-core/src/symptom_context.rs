@@ -12,8 +12,8 @@ use crate::{
     extract_evidence_facts_from_ref, normalize_symptom, resolve_agent_ref,
     resolve_global_agent_ref, safe_probe_packs_for_missing_facts, start_investigation, AdcError,
     AdcResult, AgentContextRef, AgentRefResolution, CompiledInvestigationRoute, DataQuality,
-    EvidenceFact, FleetAgentContextRequest, InvestigationRoute, InvestigationStartRequest,
-    RouteCompileInput, SafeProbePack,
+    EvidenceFact, EvidenceGraph, FleetAgentContextRequest, HypothesisSet, InvestigationRoute,
+    InvestigationStartRequest, ProbePlan, RouteCompileInput, SafeProbePack, SafetyPolicy,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +48,10 @@ pub struct SymptomContextPack {
     pub missing_fact_ids: Vec<String>,
     pub recommended_refs: Vec<AgentContextRef>,
     pub next_safe_probes: Vec<SafeProbePack>,
+    pub hypothesis_set: HypothesisSet,
+    pub evidence_graph: EvidenceGraph,
+    pub probe_plan: ProbePlan,
+    pub safety_policy: SafetyPolicy,
     pub budget: SymptomContextBudget,
     pub raw_refs: BTreeMap<String, String>,
     pub data_quality: DataQuality,
@@ -302,6 +306,15 @@ fn build_pack(input: BuildPackInput) -> AdcResult<SymptomContextPack> {
                 .map(|fleet_run_id| format!("symptom-context-{fleet_run_id}"))
         })
         .unwrap_or_else(|| "symptom-context".to_string());
+    let contracts = crate::investigation_contracts_for(
+        input.scope,
+        input.run_id.as_deref(),
+        input.fleet_run_id.as_deref(),
+        &input.symptom,
+        &input.compiled_route,
+        &input.next_safe_probes,
+        &input.data_quality,
+    );
     let mut pack = SymptomContextPack {
         schema_version: "obs.symptom_context.v1".to_string(),
         context_id,
@@ -318,6 +331,10 @@ fn build_pack(input: BuildPackInput) -> AdcResult<SymptomContextPack> {
         missing_fact_ids: input.missing_fact_ids,
         recommended_refs: input.recommended_refs,
         next_safe_probes: input.next_safe_probes,
+        hypothesis_set: contracts.hypothesis_set,
+        evidence_graph: contracts.evidence_graph,
+        probe_plan: contracts.probe_plan,
+        safety_policy: contracts.safety_policy,
         budget: SymptomContextBudget {
             max_context_bytes: input.max_context_bytes,
             returned_bytes: 0,
@@ -473,15 +490,25 @@ fn resolve_fleet_ref(
             all_lines.len()
         ));
     }
+    let ref_kind = ref_kind(ref_uri).to_string();
+    let content_type = content_type(ref_uri).to_string();
+    let text = lines.join("\n");
+    let artifact_trust = crate::classify_artifact_trust(
+        ref_uri,
+        crate::content_class_for_ref(&ref_kind, &content_type),
+        &text,
+        &data_quality,
+    );
     Ok(AgentRefResolution {
         run_id: fleet_run_id.unwrap_or("fleet").to_string(),
         ref_uri: ref_uri.to_string(),
-        ref_kind: ref_kind(ref_uri).to_string(),
-        content_type: content_type(ref_uri).to_string(),
+        ref_kind,
+        content_type,
         returned_lines: lines.len(),
         total_lines: all_lines.len(),
         truncated,
-        text: lines.join("\n"),
+        text,
+        artifact_trust,
         data_quality,
     })
 }
@@ -516,7 +543,11 @@ fn persist_symptom_context(
             "next_safe_probes": pack.next_safe_probes,
             "data_quality": pack.data_quality,
         }),
-    )
+    )?;
+    write_json(&dir.join("hypothesis_set.json"), &pack.hypothesis_set)?;
+    write_json(&dir.join("evidence_graph.json"), &pack.evidence_graph)?;
+    write_json(&dir.join("probe_plan.json"), &pack.probe_plan)?;
+    write_json(&dir.join("safety_policy.json"), &pack.safety_policy)
 }
 
 fn write_json(path: &Path, value: &impl Serialize) -> AdcResult<()> {

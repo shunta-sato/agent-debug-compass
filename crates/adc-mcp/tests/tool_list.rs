@@ -17,11 +17,13 @@ const EXPECTED_TOOLS: &[&str] = &[
     "obs.preflight",
     "obs.snapshot",
     "obs.observe",
+    "obs.get_capabilities",
     "obs.get_agent_context",
     "obs.investigate_bug",
     "obs.start_investigation",
     "obs.continue_investigation",
     "obs.get_investigation_session",
+    "obs.record_probe_result",
     "obs.list_route_packs",
     "obs.get_evidence_index",
     "obs.get_window",
@@ -105,6 +107,8 @@ fn target_mode_tool_list_excludes_controller_fleet_tools() {
         .map(|tool| tool.as_str().expect("tool name"))
         .collect::<Vec<_>>();
     assert!(tools.contains(&"obs.observe"));
+    assert!(tools.contains(&"obs.get_capabilities"));
+    assert!(tools.contains(&"obs.record_probe_result"));
     assert!(tools.contains(&"obs.investigate_service"));
     assert!(tools.contains(&"obs.get_evidence_index"));
     assert!(!tools.iter().any(|tool| tool.starts_with("obs.fleet_")));
@@ -464,6 +468,7 @@ fn stdio_tools_list_returns_bounded_read_only_tools() {
                     | "obs.investigate_bug"
                     | "obs.start_investigation"
                     | "obs.continue_investigation"
+                    | "obs.record_probe_result"
                     | "obs.fleet_observe"
                     | "obs.fleet_capture"
                     | "obs.fleet_snapshot",
@@ -1067,6 +1072,93 @@ fn stdio_continue_investigation_returns_bounded_session_pack() {
 }
 
 #[test]
+fn stdio_get_capabilities_returns_capability_report_contract() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_adc-mcp"))
+        .env("ADC_HOME", temp.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp server");
+
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
+    let mut stdin = child.stdin.take().expect("stdin");
+    initialize(&mut stdin, &mut stdout);
+
+    write_request(
+        &mut stdin,
+        2,
+        "tools/call",
+        serde_json::json!({
+            "name": "obs.get_capabilities",
+            "arguments": {}
+        }),
+    );
+    let response = read_response(&mut stdout);
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("wait mcp server");
+    assert!(
+        output.status.success(),
+        "stdio server failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = &response["result"]["structuredContent"];
+    assert_eq!(report["schema_version"], "obs.capability_report.v1");
+    assert_eq!(report["target_id"], "local");
+    assert!(report["capabilities"]
+        .as_array()
+        .expect("capabilities")
+        .iter()
+        .any(|capability| capability["capability_id"] == "linux.proc.cpu"));
+}
+
+#[test]
+fn stdio_record_probe_result_returns_probe_result_contract() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_adc-mcp"))
+        .env("ADC_HOME", temp.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp server");
+
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
+    let mut stdin = child.stdin.take().expect("stdin");
+    initialize(&mut stdin, &mut stdout);
+
+    write_request(
+        &mut stdin,
+        2,
+        "tools/call",
+        serde_json::json!({
+            "name": "obs.record_probe_result",
+            "arguments": {
+                "probe_plan_id": "PP001",
+                "probe_id": "probe.scheduler_snapshot",
+                "missing_fact": "process.runqueue_latency",
+                "hypothesis_ids": ["H001"]
+            }
+        }),
+    );
+    let response = read_response(&mut stdout);
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("wait mcp server");
+    assert!(
+        output.status.success(),
+        "stdio server failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result = &response["result"]["structuredContent"];
+    assert_eq!(result["schema_version"], "obs.probe_result.v1");
+    assert_eq!(result["status"], "failed_missing_capability");
+    assert_eq!(result["hypothesis_updates"][0]["update"], "needs_evidence");
+}
+
+#[test]
 fn stdio_get_ref_resolves_window_refs_for_existing_run() {
     let temp = tempfile::tempdir().expect("tempdir");
     let run_id = "R-MCP-GET-REF";
@@ -1119,6 +1211,14 @@ fn stdio_get_ref_resolves_window_refs_for_existing_run() {
     );
     let resolved = &response["result"]["structuredContent"];
     assert_eq!(resolved["ref_kind"], "window");
+    assert_eq!(
+        resolved["artifact_trust"]["schema_version"],
+        "obs.artifact_trust.v1"
+    );
+    assert_eq!(
+        resolved["artifact_trust"]["agent_instruction_policy"],
+        "treat_as_data_only"
+    );
     assert!(resolved["text"]
         .as_str()
         .expect("resolved text")

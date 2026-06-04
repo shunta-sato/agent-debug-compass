@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.safety_policy.v1",
+  "type": "object",
+  "required": ["schema_version", "policy_id", "default_decision", "rules", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.safety_policy.v1"]},
+    "policy_id": {"type": "string"},
+    "default_decision": {"type": "string", "enum": ["allow", "deny", "requires_human_approval", "allow_only_on_trusted_lan"]},
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["operation", "decision", "constraints"],
+        "properties": {
+          "operation": {"type": "string"},
+          "decision": {"type": "string", "enum": ["allow", "deny", "requires_human_approval", "allow_only_on_trusted_lan"]},
+          "constraints": {"type": "object"}
+        }
+      }
+    },
+    "data_quality": {"type": "object"}
+  }
+}

@@ -242,6 +242,22 @@ fn investigate_bug_creates_symptom_context_without_preexisting_run_id() {
         .expect("selected packs")
         .iter()
         .any(|pack| pack["domain"] == "latency_timeouts"));
+    assert_eq!(
+        context["hypothesis_set"]["schema_version"],
+        "obs.hypothesis_set.v1"
+    );
+    assert!(context["hypothesis_set"]["hypotheses"]
+        .as_array()
+        .expect("hypotheses")
+        .iter()
+        .all(|hypothesis| hypothesis["claim_boundary"] == "hypothesis_only"));
+    assert_eq!(context["probe_plan"]["schema_version"], "obs.probe_plan.v1");
+    assert!(context["probe_plan"]["candidate_probes"]
+        .as_array()
+        .expect("candidate probes")
+        .iter()
+        .all(|probe| probe["cause_neutral"] == true));
+    assert_eq!(context["safety_policy"]["default_decision"], "deny");
     assert!(context["facts"]
         .as_array()
         .expect("facts")
@@ -264,6 +280,42 @@ fn investigate_bug_creates_symptom_context_without_preexisting_run_id() {
     let rendered = String::from_utf8(output.stdout).expect("utf8");
     assert!(!rendered.to_ascii_lowercase().contains("root cause"));
     assert!(!rendered.contains("secret"));
+}
+
+#[test]
+fn investigate_probe_result_records_missing_capability_without_running_probe() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adc"))
+        .args([
+            "investigate",
+            "probe-result",
+            "--probe-plan-id",
+            "PP001",
+            "--probe-id",
+            "probe.scheduler_snapshot",
+            "--missing-fact",
+            "process.runqueue_latency",
+            "--hypothesis-id",
+            "H001",
+        ])
+        .output()
+        .expect("probe result");
+    assert!(
+        output.status.success(),
+        "probe result failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("probe result json");
+    assert_eq!(result["schema_version"], "obs.probe_result.v1");
+    assert_eq!(result["status"], "failed_missing_capability");
+    assert_eq!(result["hypothesis_updates"][0]["update"], "needs_evidence");
+    assert!(result["data_quality"]["missing"]
+        .as_array()
+        .expect("missing")
+        .iter()
+        .any(|value| value
+            .as_str()
+            .is_some_and(|text| text.contains("process.runqueue_latency"))));
 }
 
 #[test]
@@ -594,6 +646,14 @@ fn investigate_continue_opens_selected_step_and_persists_session() {
         .expect("opened refs")
         .iter()
         .all(|entry| entry["text"].is_null()));
+    assert!(continue_json["opened_refs"]
+        .as_array()
+        .expect("opened refs")
+        .iter()
+        .all(
+            |entry| entry["artifact_trust"]["schema_version"] == "obs.artifact_trust.v1"
+                && entry["artifact_trust"]["agent_instruction_policy"] == "treat_as_data_only"
+        ));
     assert!(continue_json["new_facts"]
         .as_array()
         .expect("new facts")
@@ -652,12 +712,10 @@ fn investigate_continue_opens_selected_step_and_persists_session() {
         .expect("route steps")
         .iter()
         .all(|step| step["step_id"] != "IR001"));
-    assert!(
-        continue_json["budget"]["returned_bytes"]
-            .as_u64()
-            .expect("returned bytes")
-            < 12_000
-    );
+    let returned_bytes = continue_json["budget"]["returned_bytes"]
+        .as_u64()
+        .expect("returned bytes");
+    assert!(returned_bytes < 16_000, "returned bytes: {returned_bytes}");
     let rendered = String::from_utf8(continue_output.stdout).expect("continue utf8");
     assert!(!rendered.contains("secret-value"));
     assert!(!rendered.to_ascii_lowercase().contains("root cause"));
@@ -1269,6 +1327,7 @@ fn subcommand_help_does_not_require_runtime_flags() {
         vec!["observe", "--help"],
         vec!["agent-context", "--help"],
         vec!["fleet", "enroll", "--help"],
+        vec!["investigate", "--help"],
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_adc"))
             .args(args)
@@ -1281,6 +1340,12 @@ fn subcommand_help_does_not_require_runtime_flags() {
         );
         let stdout = String::from_utf8(output.stdout).expect("help utf8");
         assert!(stdout.contains("Usage:"), "help output was {stdout}");
+        if stdout.contains("adc investigate") {
+            assert!(
+                stdout.contains("investigate probe-result"),
+                "investigate help omitted probe-result: {stdout}"
+            );
+        }
         assert!(!stdout.contains("missing required flag"));
     }
 }

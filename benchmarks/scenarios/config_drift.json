@@ -1,0 +1,17 @@
+{
+  "schema_version": "obs.agent_debug_benchmark_scenario.v1",
+  "scenario_id": "config_drift",
+  "symptom": "behavior changed after deploy",
+  "expected_top_hypothesis": "H001",
+  "forbidden_claim_markers": ["the cause is", "bad config confirmed"],
+  "requires_data_quality_attention": true,
+  "allowed_raw_ref_open_count": 2,
+  "candidate_investigation_state": {
+    "data_quality_checked": true,
+    "opened_raw_refs": ["artifact://raw/config.redacted.json"],
+    "evidence_supported_statements": ["Redacted configuration evidence was available."],
+    "time_to_first_useful_probe_ms": 105,
+    "hypothesis_set": {"hypotheses": [{"hypothesis_id": "H001", "claim_boundary": "hypothesis_only"}]},
+    "probe_plan": {"candidate_probes": [{"probe_id": "probe.io_config_snapshot", "safety_status": "allowed"}]}
+  }
+}

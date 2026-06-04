@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.probe_result.v1",
+  "type": "object",
+  "required": ["schema_version", "probe_id", "probe_plan_id", "result_kind", "executor", "executed", "safety_decision", "capability_status", "status", "produced_refs", "produced_facts", "hypothesis_updates", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.probe_result.v1"]},
+    "probe_id": {"type": "string"},
+    "probe_plan_id": {"type": "string"},
+    "result_kind": {"type": "string", "enum": ["not_executed_missing_capability", "not_executed_policy_denied", "executed", "manually_recorded"]},
+    "executor": {"type": "string", "enum": ["adc", "agent", "operator", "external"]},
+    "executed": {"type": "boolean"},
+    "safety_decision": {"type": "string", "enum": ["allow", "deny", "requires_human_approval", "allow_only_on_trusted_lan"]},
+    "capability_status": {"type": "string", "enum": ["supported", "degraded", "unavailable", "requires_privilege", "unsafe", "unknown"]},
+    "status": {"type": "string", "enum": ["completed", "failed_missing_capability", "failed_policy_denied", "failed"]},
+    "produced_refs": {"type": "array"},
+    "produced_facts": {"type": "array"},
+    "hypothesis_updates": {"type": "array"},
+    "data_quality": {"type": "object"}
+  }
+}

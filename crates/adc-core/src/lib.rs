@@ -3,6 +3,7 @@ pub mod artifact;
 pub mod capture;
 pub mod collectors;
 pub mod compare;
+pub mod contracts;
 pub mod daemon;
 pub mod discovery;
 pub mod error;
@@ -53,6 +54,18 @@ pub use capture::{
 };
 pub use collectors::{parse_meminfo, parse_net_dev, parse_proc_stat};
 pub use compare::{compare_runs, CompareRunsResult, MetricDelta};
+pub use contracts::{
+    build_capability_report, classify_artifact_trust, content_class_for_raw_ref,
+    content_class_for_ref, default_rootless_safety_policy, investigation_contracts_for,
+    probe_result_for_unavailable_capability, AgentInstructionPolicy, ArtifactTrust,
+    CapabilityEntry, CapabilityReport, CapabilityStatus, ClaimBoundary, ConfidenceLevel,
+    ContentClass, EvidenceGraph, EvidenceGraphEdge, EvidenceGraphNode, EvidenceStrength,
+    EvidenceSupport, Hypothesis, HypothesisSet, HypothesisStatus, InvestigationContracts,
+    ProbeExecutor, ProbeHypothesisUpdate, ProbePlan, ProbePlanCandidate, ProbeProducedFact,
+    ProbeProducedRef, ProbeResult, ProbeResultKind, ProbeResultStatus, ProbeSafetyStatus,
+    PromptInjectionScanResult, PromptInjectionSeverity, SafetyDecision, SafetyPolicy,
+    SafetyPolicyRule, ScanStatus, SecretScanResult, TrustLevel,
+};
 pub use daemon::{
     arm_profile, disarm_profile, initialize_state, read_state, record_run, run_service_for,
     state_path, DaemonState, ServiceRunSummary,
