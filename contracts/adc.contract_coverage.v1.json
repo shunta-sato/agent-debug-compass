@@ -1,0 +1,147 @@
+{
+  "schema_version": "adc.contract_coverage.v1",
+  "contracts": [
+    {
+      "contract": "adc.contract_coverage.v1",
+      "schema": "schemas/adc.contract_coverage.v1.schema.json",
+      "static_fixtures": ["contracts/adc.contract_coverage.v1.json"],
+      "invariant_tests": ["scripts/contract/check-coverage.py"],
+      "coverage_levels": ["static", "invariant"]
+    },
+    {
+      "contract": "adc.investigation_trace.v1",
+      "schema": "schemas/adc.investigation_trace.v1.schema.json",
+      "static_fixtures": ["tests/golden/adc.investigation_trace.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "trace_fixtures": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "invariant", "adversarial", "trace"]
+    },
+    {
+      "contract": "obs.agent_context.v1",
+      "schema": "schemas/obs.agent_context.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.agent_context.v1.min.json"],
+      "coverage_levels": ["static"]
+    },
+    {
+      "contract": "obs.artifact_trust.v1",
+      "schema": "schemas/obs.artifact_trust.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.artifact_trust.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.artifact_trust.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.artifact_trust.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "trace_fixtures": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial", "trace"]
+    },
+    {
+      "contract": "obs.capability_report.v1",
+      "schema": "schemas/obs.capability_report.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.capability_report.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.capability_report.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.capability_report.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp"]
+    },
+    {
+      "contract": "obs.data_quality.v1",
+      "schema": "schemas/obs.data_quality.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.data_quality.v1.min.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.event_envelope.v1",
+      "schema": "schemas/obs.event_envelope.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.event_envelope.v1.min.json"],
+      "coverage_levels": ["static"]
+    },
+    {
+      "contract": "obs.evidence_graph.v1",
+      "schema": "schemas/obs.evidence_graph.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.evidence_graph.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.symptom_context.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.symptom_context.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp"]
+    },
+    {
+      "contract": "obs.evidence_index.v2",
+      "schema": "schemas/obs.evidence_index.v2.schema.json",
+      "static_fixtures": ["tests/golden/obs.evidence_index.v2.min.json"],
+      "coverage_levels": ["static"]
+    },
+    {
+      "contract": "obs.hypothesis_set.v1",
+      "schema": "schemas/obs.hypothesis_set.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.hypothesis_set.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.hypothesis_set.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.symptom_context.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "trace_fixtures": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial", "trace"]
+    },
+    {
+      "contract": "obs.investigation_continue.v1",
+      "schema": "schemas/obs.investigation_continue.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.investigation_continue.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.investigation_continue.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.investigation_continue.v1.generated.json"],
+      "trace_fixtures": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp", "trace"]
+    },
+    {
+      "contract": "obs.investigation_start.v1",
+      "schema": "schemas/obs.investigation_start.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.investigation_start.v1.min.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.investigation_start.v1.generated.json"],
+      "coverage_levels": ["static", "generated_mcp"]
+    },
+    {
+      "contract": "obs.probe_plan.v1",
+      "schema": "schemas/obs.probe_plan.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.probe_plan.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.probe_plan.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.symptom_context.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "trace_fixtures": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "trace"]
+    },
+    {
+      "contract": "obs.probe_result.v1",
+      "schema": "schemas/obs.probe_result.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.probe_result.v1.min.json"],
+      "generated_cli": [
+        "target/contract-fixtures/cli.obs.probe_result.missing_capability.v1.generated.json",
+        "target/contract-fixtures/cli.obs.probe_result.policy_denied.v1.generated.json"
+      ],
+      "generated_mcp": [
+        "target/contract-fixtures/mcp.obs.probe_result.missing_capability.v1.generated.json",
+        "target/contract-fixtures/mcp.obs.probe_result.policy_denied.v1.generated.json"
+      ],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "trace_fixtures": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial", "trace"]
+    },
+    {
+      "contract": "obs.safety_policy.v1",
+      "schema": "schemas/obs.safety_policy.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.safety_policy.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.symptom_context.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.symptom_context.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.symptom_context.v1",
+      "schema": "schemas/obs.symptom_context.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.symptom_context.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.symptom_context.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.symptom_context.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp"]
+    }
+  ]
+}

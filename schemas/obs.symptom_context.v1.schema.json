@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.symptom_context.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "context_id", "scope", "symptom", "target_summary", "agent_context", "investigation_route", "compiled_route", "facts", "missing_fact_ids", "recommended_refs", "next_safe_probes", "hypothesis_set", "evidence_graph", "probe_plan", "safety_policy", "budget", "raw_refs", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.symptom_context.v1"]},
+    "context_id": {"type": "string"},
+    "scope": {"type": "string", "enum": ["run", "fleet"]},
+    "run_id": {"type": "string"},
+    "fleet_run_id": {"type": "string"},
+    "service_name": {"type": "string"},
+    "symptom": {"type": "object"},
+    "target_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_ids", "data_quality"],
+      "properties": {
+        "target_ids": {"type": "array", "items": {"type": "string"}},
+        "captured_count": {"type": "integer"},
+        "failed_count": {"type": "integer"},
+        "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+      }
+    },
+    "agent_context": {"type": "object"},
+    "investigation_route": {"type": "object"},
+    "compiled_route": {"type": "object"},
+    "facts": {"type": "array"},
+    "missing_fact_ids": {"type": "array", "items": {"type": "string"}},
+    "recommended_refs": {"type": "array"},
+    "next_safe_probes": {"type": "array"},
+    "hypothesis_set": {"$ref": "obs.hypothesis_set.v1.schema.json"},
+    "evidence_graph": {"$ref": "obs.evidence_graph.v1.schema.json"},
+    "probe_plan": {"$ref": "obs.probe_plan.v1.schema.json"},
+    "safety_policy": {"$ref": "obs.safety_policy.v1.schema.json"},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_context_bytes", "returned_bytes", "fact_count", "missing_fact_count", "selected_pack_count", "truncated"],
+      "properties": {
+        "max_context_bytes": {"type": "integer"},
+        "returned_bytes": {"type": "integer"},
+        "fact_count": {"type": "integer"},
+        "missing_fact_count": {"type": "integer"},
+        "selected_pack_count": {"type": "integer"},
+        "truncated": {"type": "boolean"}
+      }
+    },
+    "raw_refs": {"type": "object"},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

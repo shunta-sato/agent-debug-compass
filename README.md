@@ -305,7 +305,7 @@ ADC_HOME="$PWD/.agent-debug-compass" \
 
 # Record a failed probe result without executing target commands.
 ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- investigate probe-result \
+  cargo run -q -p adc -- investigate probe-result missing-capability \
     --probe-plan-id PP001 \
     --probe-id probe.scheduler_snapshot \
     --missing-fact process.runqueue_latency \
@@ -399,7 +399,8 @@ scripts/demo/tests/run-sensor-gateway-demo-test.sh
 scripts/e2e/run-e2e.sh
 PATH="$HOME/.cargo/bin:$PATH" scripts/security/run-rust-security-checks.sh
 scripts/e2e/run-agent-quality-dogfood.sh
-scripts/contract/tests/validate-contracts-test.sh
+python3 -m pip install -r scripts/contract/requirements.txt
+make contract
 scripts/benchmarks/tests/run-agent-debug-benchmark-test.sh
 ```
 

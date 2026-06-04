@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.evidence_index.v2",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "run_id", "target_id", "windows", "raw_refs", "data_quality"],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.evidence_index.v2"]},
@@ -9,6 +10,6 @@
     "target_id": {"type": "string"},
     "windows": {"type": "array"},
     "raw_refs": {"type": "object"},
-    "data_quality": {"type": "object"}
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

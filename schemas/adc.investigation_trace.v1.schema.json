@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "adc.investigation_trace.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "trace_id", "capability_report", "symptom_context", "artifact_trust", "investigation_continue", "hypothesis_set", "probe_plan", "probe_result", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["adc.investigation_trace.v1"]},
+    "trace_id": {"type": "string"},
+    "capability_report": {"$ref": "obs.capability_report.v1.schema.json"},
+    "symptom_context": {"$ref": "obs.symptom_context.v1.schema.json"},
+    "artifact_trust": {"$ref": "obs.artifact_trust.v1.schema.json"},
+    "investigation_continue": {"$ref": "obs.investigation_continue.v1.schema.json"},
+    "hypothesis_set": {"$ref": "obs.hypothesis_set.v1.schema.json"},
+    "probe_plan": {"$ref": "obs.probe_plan.v1.schema.json"},
+    "probe_result": {"$ref": "obs.probe_result.v1.schema.json"},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

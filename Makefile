@@ -3,7 +3,7 @@
 help:
 	@printf '%s\n' \
 	  'adc-targetd development commands:' \
-	  '  make verify            Run format, lint, analysis, and tests' \
+	  '  make verify            Run format, lint, analysis, tests, and contract validation' \
 	  '  make build-debug       Build debug binaries' \
 	  '  make build-release     Build release binaries' \
 	  '  make format            Check Rust formatting' \
@@ -12,7 +12,7 @@ help:
 	  '  make test-unit         Run unit tests' \
 	  '  make test-integration  Run integration tests' \
 	  '  make test-scripts      Run shell syntax checks and script smoke tests' \
-	  '  make contract          Validate schema/golden contract fixtures' \
+	  '  make contract          Validate static and generated contract fixtures' \
 	  '  make security-check    Run Rust dependency/security/supply-chain checks' \
 	  '  make release-gate      Run verify, security-check, E2E, and package checks' \
 	  '  make demo-sensor-gateway Run the release demo locally' \
@@ -44,7 +44,7 @@ test-integration:
 	cargo test --workspace --tests
 
 test-scripts:
-	bash -n scripts/demo/*.sh scripts/e2e/run-e2e.sh scripts/e2e/merge-target-smoke.sh scripts/e2e/target/*.sh scripts/install/*.sh scripts/package/*.sh scripts/security/*.sh
+	bash -n scripts/demo/*.sh scripts/e2e/run-e2e.sh scripts/e2e/merge-target-smoke.sh scripts/e2e/target/*.sh scripts/install/*.sh scripts/package/*.sh scripts/security/*.sh scripts/contract/*.sh scripts/contract/tests/*.sh
 	bash scripts/demo/tests/run-sensor-gateway-demo-test.sh
 	bash scripts/e2e/tests/merge-target-smoke-test.sh
 	bash scripts/e2e/tests/run-pi5-release-smoke-test.sh
@@ -55,7 +55,10 @@ test-scripts:
 	bash scripts/security/run-rust-security-checks.sh --dry-run
 
 contract:
-	python3 scripts/contract/validate-contracts.py --schema-dir schemas --fixture-dir tests/golden
+	bash scripts/contract/tests/validate-contracts-test.sh
+	python3 scripts/contract/validate-contracts.py --schema-dir schemas --fixture-dir tests/golden --fixture-dir contracts
+	scripts/contract/validate-generated-contracts.sh
+	python3 scripts/contract/check-coverage.py --schema-dir schemas --coverage contracts/adc.contract_coverage.v1.json --repo-root .
 
 security-check:
 	scripts/security/run-rust-security-checks.sh

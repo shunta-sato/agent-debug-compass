@@ -1389,7 +1389,7 @@ fn investigate(args: &[String]) -> Result<(), String> {
         [scope, kind, rest @ ..] if scope == "service" => investigate_service(kind, rest),
         [cmd, rest @ ..] if cmd == "ref" => investigate_ref(rest),
         _ => Err(
-            "usage: adc investigate bug --symptom <text> [--run-id <id>|--fleet-run-id <id>|--duration-ms N] [--service-name NAME] [--inventory PATH] | investigate start (--run-id <id>|--fleet-run-id <id>) [--service-name NAME] [--inventory PATH] [--journal-lines N] [--format json|markdown] | investigate continue (--run-id <id>|--fleet-run-id <id>) --step-id <id> [--ref-label LABEL] [--ref REF] | investigate session (--run-id <id>|--fleet-run-id <id>) --session-id <id> | investigate cleanup-sessions (--run-id <id>|--fleet-run-id <id>) [--max-sessions N] [--max-age-days N] [--dry-run|--execute] | investigate probe-result --probe-plan-id ID --probe-id ID --missing-fact FACT [--hypothesis-id H] | investigate route-packs | investigate service <name> [--journal-lines N] | investigate ref --ref artifact://service_investigations/... [--limit N]"
+            "usage: adc investigate bug --symptom <text> [--run-id <id>|--fleet-run-id <id>|--duration-ms N] [--service-name NAME] [--inventory PATH] | investigate start (--run-id <id>|--fleet-run-id <id>) [--service-name NAME] [--inventory PATH] [--journal-lines N] [--format json|markdown] | investigate continue (--run-id <id>|--fleet-run-id <id>) --step-id <id> [--ref-label LABEL] [--ref REF] | investigate session (--run-id <id>|--fleet-run-id <id>) --session-id <id> | investigate cleanup-sessions (--run-id <id>|--fleet-run-id <id>) [--max-sessions N] [--max-age-days N] [--dry-run|--execute] | investigate probe-result missing-capability --probe-plan-id ID --probe-id ID --missing-fact FACT [--hypothesis-id H] | investigate probe-result policy-denied --probe-plan-id ID --probe-id ID --reason TEXT [--hypothesis-id H] | investigate route-packs | investigate service <name> [--journal-lines N] | investigate ref --ref artifact://service_investigations/... [--limit N]"
                 .to_string(),
         ),
     }
@@ -1640,6 +1640,19 @@ fn investigate_cleanup_sessions(args: &[String]) -> Result<(), String> {
 }
 
 fn investigate_probe_result(args: &[String]) -> Result<(), String> {
+    let (result_kind, rest) = args.split_first().ok_or_else(probe_result_usage)?;
+    match result_kind.as_str() {
+        "missing-capability" => investigate_probe_result_missing_capability(rest),
+        "policy-denied" => investigate_probe_result_policy_denied(rest),
+        _ => Err(probe_result_usage()),
+    }
+}
+
+fn probe_result_usage() -> String {
+    "usage: adc investigate probe-result missing-capability --probe-plan-id ID --probe-id ID --missing-fact FACT [--hypothesis-id H] | adc investigate probe-result policy-denied --probe-plan-id ID --probe-id ID --reason TEXT [--hypothesis-id H]".to_string()
+}
+
+fn investigate_probe_result_missing_capability(args: &[String]) -> Result<(), String> {
     let probe_plan_id = required_flag(args, "--probe-plan-id")?;
     let probe_id = required_flag(args, "--probe-id")?;
     let missing_fact = required_flag(args, "--missing-fact")?;
@@ -1659,6 +1672,35 @@ fn investigate_probe_result(args: &[String]) -> Result<(), String> {
         probe_id,
         &hypothesis_ids,
         missing_fact,
+        &data_quality,
+    );
+    serde_json::to_writer_pretty(std::io::stdout(), &result)
+        .map_err(|err| format!("failed to serialize probe result: {err}"))?;
+    println!();
+    Ok(())
+}
+
+fn investigate_probe_result_policy_denied(args: &[String]) -> Result<(), String> {
+    let probe_plan_id = required_flag(args, "--probe-plan-id")?;
+    let probe_id = required_flag(args, "--probe-id")?;
+    let reason = required_flag(args, "--reason")?;
+    let hypothesis_ids = flag_values(args, "--hypothesis-id")
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let data_quality = adc_core::DataQuality {
+        missing: vec![format!(
+            "{probe_id} was not executed because policy denied the probe"
+        )],
+        clock_confidence: "medium".to_string(),
+        notes: vec![reason.to_string()],
+        ..Default::default()
+    };
+    let result = adc_core::probe_result_for_policy_denied(
+        probe_plan_id,
+        probe_id,
+        &hypothesis_ids,
+        reason,
         &data_quality,
     );
     serde_json::to_writer_pretty(std::io::stdout(), &result)

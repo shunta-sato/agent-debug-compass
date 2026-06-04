@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.probe_result.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "probe_id", "probe_plan_id", "result_kind", "executor", "executed", "safety_decision", "capability_status", "status", "produced_refs", "produced_facts", "hypothesis_updates", "data_quality"],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.probe_result.v1"]},
@@ -13,9 +14,44 @@
     "safety_decision": {"type": "string", "enum": ["allow", "deny", "requires_human_approval", "allow_only_on_trusted_lan"]},
     "capability_status": {"type": "string", "enum": ["supported", "degraded", "unavailable", "requires_privilege", "unsafe", "unknown"]},
     "status": {"type": "string", "enum": ["completed", "failed_missing_capability", "failed_policy_denied", "failed"]},
-    "produced_refs": {"type": "array"},
-    "produced_facts": {"type": "array"},
-    "hypothesis_updates": {"type": "array"},
-    "data_quality": {"type": "object"}
+    "produced_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "raw_ref"],
+        "properties": {
+          "label": {"type": "string"},
+          "raw_ref": {"type": "string"}
+        }
+      }
+    },
+    "produced_facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fact_id", "statement", "raw_ref"],
+        "properties": {
+          "fact_id": {"type": "string"},
+          "statement": {"type": "string"},
+          "raw_ref": {"type": "string"}
+        }
+      }
+    },
+    "hypothesis_updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hypothesis_id", "update", "reason"],
+        "properties": {
+          "hypothesis_id": {"type": "string"},
+          "update": {"type": "string", "enum": ["open", "supported", "weakened", "contradicted", "needs_evidence", "closed_insufficient_evidence"]},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

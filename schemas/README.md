@@ -7,5 +7,11 @@ The schemas are intentionally small. A schema is added only when the correspondi
 Run:
 
 ```sh
-scripts/contract/validate-contracts.py --schema-dir schemas --fixture-dir tests/golden
+python3 -m pip install -r scripts/contract/requirements.txt
+make contract
 ```
+
+`make contract` validates static golden fixtures, generated CLI/MCP fixtures,
+semantic invariants, sequence trace consistency, and the contract coverage
+manifest. Validation uses a pinned Draft 2020-12 JSON Schema dependency and
+allows only local refs inside `schemas/`.

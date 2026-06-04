@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.investigation_start.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "agent_context", "investigation_route", "raw_refs", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.investigation_start.v1"]},
+    "scope": {"type": "string", "enum": ["run", "fleet"]},
+    "run_id": {"type": "string"},
+    "fleet_run_id": {"type": "string"},
+    "service_name": {"type": "string"},
+    "agent_context": {"type": "object"},
+    "investigation_route": {"type": "object"},
+    "raw_refs": {"type": "object"},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

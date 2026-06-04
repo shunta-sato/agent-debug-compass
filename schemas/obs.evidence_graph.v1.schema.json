@@ -2,12 +2,43 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.evidence_graph.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "scope", "nodes", "edges", "data_quality"],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.evidence_graph.v1"]},
     "scope": {"type": "string"},
-    "nodes": {"type": "array"},
-    "edges": {"type": "array"},
-    "data_quality": {"type": "object"}
+    "run_id": {"type": "string"},
+    "fleet_run_id": {"type": "string"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_id", "kind"],
+        "properties": {
+          "node_id": {"type": "string"},
+          "kind": {"type": "string"},
+          "label": {"type": "string"},
+          "raw_ref": {"type": "string"},
+          "hypothesis_id": {"type": "string"},
+          "target_id": {"type": "string"}
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "kind"],
+        "properties": {
+          "from": {"type": "string"},
+          "to": {"type": "string"},
+          "kind": {"type": "string"},
+          "strength": {"type": "string"}
+        }
+      }
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

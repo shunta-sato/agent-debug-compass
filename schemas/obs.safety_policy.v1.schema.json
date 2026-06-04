@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.safety_policy.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "policy_id", "default_decision", "rules", "data_quality"],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.safety_policy.v1"]},
@@ -11,6 +12,7 @@
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["operation", "decision", "constraints"],
         "properties": {
           "operation": {"type": "string"},
@@ -19,6 +21,6 @@
         }
       }
     },
-    "data_quality": {"type": "object"}
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

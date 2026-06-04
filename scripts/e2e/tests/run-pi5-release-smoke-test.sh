@@ -5,7 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-"$ROOT_DIR/scripts/e2e/target/run-pi5-release-smoke.sh" \
+RUNNER="$ROOT_DIR/scripts/e2e/target/run-pi5-release-smoke.sh"
+if [[ ! -x "$RUNNER" ]]; then
+  echo "skip: optional target smoke runner is not present in this public tree"
+  exit 0
+fi
+
+"$RUNNER" \
   --duration-sec 1 \
   --result-root "$TMP_DIR/results" \
   --binary-dir "$TMP_DIR/missing-release"

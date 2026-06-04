@@ -1136,6 +1136,7 @@ fn stdio_record_probe_result_returns_probe_result_contract() {
         serde_json::json!({
             "name": "obs.record_probe_result",
             "arguments": {
+                "result_kind": "not_executed_missing_capability",
                 "probe_plan_id": "PP001",
                 "probe_id": "probe.scheduler_snapshot",
                 "missing_fact": "process.runqueue_latency",
@@ -1154,8 +1155,56 @@ fn stdio_record_probe_result_returns_probe_result_contract() {
     );
     let result = &response["result"]["structuredContent"];
     assert_eq!(result["schema_version"], "obs.probe_result.v1");
+    assert_eq!(result["result_kind"], "not_executed_missing_capability");
+    assert_eq!(result["executed"], false);
     assert_eq!(result["status"], "failed_missing_capability");
     assert_eq!(result["hypothesis_updates"][0]["update"], "needs_evidence");
+}
+
+#[test]
+fn stdio_record_policy_denied_probe_result_returns_non_executed_contract() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_adc-mcp"))
+        .env("ADC_HOME", temp.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp server");
+
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
+    let mut stdin = child.stdin.take().expect("stdin");
+    initialize(&mut stdin, &mut stdout);
+
+    write_request(
+        &mut stdin,
+        2,
+        "tools/call",
+        serde_json::json!({
+            "name": "obs.record_probe_result",
+            "arguments": {
+                "result_kind": "not_executed_policy_denied",
+                "probe_plan_id": "PP002",
+                "probe_id": "probe.restart_service",
+                "reason": "restart_service requires human approval",
+                "hypothesis_ids": ["H002"]
+            }
+        }),
+    );
+    let response = read_response(&mut stdout);
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("wait mcp server");
+    assert!(
+        output.status.success(),
+        "stdio server failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result = &response["result"]["structuredContent"];
+    assert_eq!(result["schema_version"], "obs.probe_result.v1");
+    assert_eq!(result["result_kind"], "not_executed_policy_denied");
+    assert_eq!(result["executed"], false);
+    assert_eq!(result["status"], "failed_policy_denied");
 }
 
 #[test]
