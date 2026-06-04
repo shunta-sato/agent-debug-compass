@@ -139,28 +139,27 @@ fn recorder_mark(args: &[String]) -> Result<(), String> {
     let symptom = required_flag(args, "--symptom")?;
     let artifact_root = adc_core::snapshot::default_artifact_root();
     let received_at = monotonic_now_ns();
-    let incident_id = optional_flag(args, "--incident-id")
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("INC-{received_at}"));
     let marker_id = optional_flag(args, "--marker-id")
         .map(str::to_string)
         .unwrap_or_else(|| format!("marker-{received_at}"));
+    let incident_id = format!("INC-{marker_id}");
     let marker = adc_core::marker_at_received_time(&marker_id, "operator", symptom, received_at);
-    let ring = adc_core::RecorderRing::new("local", 1, 60_000);
-    let freeze = adc_core::freeze_recorder_marker(
-        &artifact_root,
-        &incident_id,
-        "win-001",
-        &marker,
-        &ring,
-        &adc_core::default_recorder_budget(),
-    )
-    .map_err(|err| err.to_string())?;
+    let marker_path = adc_core::write_pending_recorder_marker(&artifact_root, &marker)
+        .map_err(|err| err.to_string())?;
     let response = serde_json::json!({
-        "marker": freeze.marker,
-        "incident": freeze.incident,
-        "frozen_window": freeze.frozen_window,
-        "incident_dir": freeze.run_dir,
+        "marker": marker,
+        "status": "pending",
+        "pending_marker_path": marker_path,
+        "expected_incident_id": incident_id,
+        "data_quality": {
+            "dropped": false,
+            "drop_count": 0,
+            "throttled": false,
+            "missing": [],
+            "truncated": false,
+            "clock_confidence": "medium",
+            "notes": ["marker queued for adc-targetd recorder freeze"]
+        }
     });
     serde_json::to_writer_pretty(std::io::stdout(), &response)
         .map_err(|err| format!("failed to serialize recorder marker freeze: {err}"))?;

@@ -38,17 +38,50 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.recorder_marker.v1.generated.json",
         &recorder_mark["marker"],
     );
+    let marker = adc_core::marker_at_received_time(
+        "marker-contract-cli",
+        "operator",
+        "camera frame drop observed around now",
+        1_000,
+    );
+    let mut ring = adc_core::RecorderRing::new("local", 2, 60_000);
+    ring.push(adc_core::RecorderSample {
+        time_mono_ns: 1_000,
+        signals: vec![adc_core::RecorderSignalSample {
+            signal_id: "memory.summary".to_string(),
+            value: 42.0,
+        }],
+    });
+    adc_core::freeze_recorder_marker(
+        temp.path(),
+        "INC-marker-contract-cli",
+        "win-marker-contract-cli",
+        &marker,
+        &ring,
+        &adc_core::default_recorder_budget(),
+    )
+    .expect("freeze recorder fixture");
+    let recorder_incident = command_json(
+        temp.path(),
+        [
+            "recorder",
+            "incident",
+            "get",
+            "--incident-id",
+            "INC-marker-contract-cli",
+        ],
+    );
     write_fixture(
         "cli.obs.recorder_incident.v1.generated.json",
-        &recorder_mark["incident"],
+        &recorder_incident["incident"],
     );
     write_fixture(
         "cli.obs.recorder_frozen_window.v1.generated.json",
-        &recorder_mark["frozen_window"],
+        &recorder_incident["frozen_window"],
     );
     write_fixture(
         "cli.obs.loss_report.v1.generated.json",
-        &recorder_mark["frozen_window"]["loss_report"],
+        &recorder_incident["frozen_window"]["loss_report"],
     );
 
     command_json(

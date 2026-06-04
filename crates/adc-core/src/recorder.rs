@@ -247,6 +247,75 @@ pub struct RecorderFreeze {
     pub run_dir: PathBuf,
 }
 
+pub fn recorder_pending_marker_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
+    artifact_root.as_ref().join("recorder/markers/pending")
+}
+
+pub fn write_pending_recorder_marker(
+    artifact_root: impl AsRef<Path>,
+    marker: &RecorderMarker,
+) -> AdcResult<PathBuf> {
+    validate_recorder_file_segment(&marker.marker_id, "marker_id")?;
+    let pending_dir = recorder_pending_marker_dir(artifact_root);
+    fs::create_dir_all(&pending_dir).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to create recorder pending marker directory {}: {err}",
+            pending_dir.display()
+        ))
+    })?;
+    let path = pending_dir.join(format!("{}.json", marker.marker_id));
+    write_json(&path, marker)?;
+    Ok(path)
+}
+
+pub fn drain_pending_recorder_markers(
+    artifact_root: impl AsRef<Path>,
+) -> AdcResult<Vec<RecorderMarker>> {
+    let pending_dir = recorder_pending_marker_dir(artifact_root);
+    let Ok(entries) = fs::read_dir(&pending_dir) else {
+        return Ok(Vec::new());
+    };
+    let mut paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|err| {
+            AdcError::Artifact(format!(
+                "failed to read recorder pending marker entry in {}: {err}",
+                pending_dir.display()
+            ))
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+
+    let mut markers = Vec::new();
+    for path in paths {
+        let bytes = fs::read(&path).map_err(|err| {
+            AdcError::Artifact(format!(
+                "failed to read pending recorder marker {}: {err}",
+                path.display()
+            ))
+        })?;
+        let marker: RecorderMarker = serde_json::from_slice(&bytes).map_err(|err| {
+            AdcError::Artifact(format!(
+                "failed to parse pending recorder marker {}: {err}",
+                path.display()
+            ))
+        })?;
+        validate_recorder_file_segment(&marker.marker_id, "marker_id")?;
+        fs::remove_file(&path).map_err(|err| {
+            AdcError::Artifact(format!(
+                "failed to remove pending recorder marker {}: {err}",
+                path.display()
+            ))
+        })?;
+        markers.push(marker);
+    }
+    Ok(markers)
+}
+
 #[derive(Debug, Clone)]
 pub struct RecorderRing {
     target_id: String,
@@ -553,6 +622,21 @@ fn write_jsonl(path: &Path, samples: &[RecorderSample]) -> AdcResult<()> {
     }
     fs::write(path, lines)
         .map_err(|err| AdcError::Artifact(format!("failed to write {}: {err}", path.display())))
+}
+
+fn validate_recorder_file_segment(value: &str, label: &str) -> AdcResult<()> {
+    if value.trim().is_empty() {
+        return Err(AdcError::Artifact(format!("{label} must not be empty")));
+    }
+    let valid = value
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
+    if !valid || value == "." || value == ".." {
+        return Err(AdcError::Artifact(format!(
+            "{label} must be a single safe recorder file segment"
+        )));
+    }
+    Ok(())
 }
 
 pub fn default_recorder_budget() -> RecorderBudget {

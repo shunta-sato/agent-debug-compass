@@ -12,11 +12,13 @@ use serde_json::json;
 use crate::{
     aggregate_event_data_quality, build_evidence_index, build_overhead_report,
     collectors::{CpuSample, MemorySample, NetworkDeviceSample},
-    default_target_id, evaluate_trigger, parse_meminfo, parse_net_dev, parse_proc_stat,
+    default_recorder_budget, default_target_id, drain_pending_recorder_markers, evaluate_trigger,
+    freeze_recorder_marker, parse_meminfo, parse_net_dev, parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
     snapshot, write_evidence_index, AdcError, AdcResult, ArtifactManifest, ClockSource,
     DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget, OverheadSample, Profile,
-    TimeRangeNs, TriggerEvaluation, TriggerInput,
+    RecorderRing, RecorderSample, RecorderSignalSample, TimeRangeNs, TriggerEvaluation,
+    TriggerInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +38,7 @@ pub struct DaemonState {
 pub struct ServiceRunSummary {
     pub state: DaemonState,
     pub captured_runs: Vec<String>,
+    pub frozen_incidents: Vec<String>,
     pub iterations: u64,
     pub data_quality: DataQuality,
 }
@@ -164,8 +167,15 @@ pub fn run_service_for(
     let profile_dir = profile_dir.as_ref();
     let deadline = Instant::now() + duration;
     let mut captured_runs = Vec::new();
+    let mut frozen_incidents = Vec::new();
     let mut iterations = 0_u64;
     let mut previous_sample = None;
+    let recorder_budget = default_recorder_budget();
+    let mut recorder_ring = RecorderRing::new(
+        default_target_id(),
+        recorder_budget.max_samples_per_second as usize,
+        recorder_budget.max_retention_ms,
+    );
     let mut summary_quality = DataQuality {
         clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
@@ -190,6 +200,20 @@ pub fn run_service_for(
 
         let profile = load_profile(profile_dir, &profile_id)?;
         let sample = collect_live_sample(&profile);
+        push_recorder_samples(&mut recorder_ring, &sample);
+        for marker in drain_pending_recorder_markers(artifact_root)? {
+            let incident_id = format!("INC-{}", marker.marker_id);
+            let window_id = format!("win-{}", marker.marker_id);
+            freeze_recorder_marker(
+                artifact_root,
+                &incident_id,
+                &window_id,
+                &marker,
+                &recorder_ring,
+                &recorder_budget,
+            )?;
+            frozen_incidents.push(incident_id);
+        }
         if let Some(matched) = evaluate_live_triggers(&profile, previous_sample.as_ref(), &sample)?
         {
             let run_id = next_daemon_run_id();
@@ -209,6 +233,7 @@ pub fn run_service_for(
     Ok(ServiceRunSummary {
         state,
         captured_runs,
+        frozen_incidents,
         iterations,
         data_quality: summary_quality,
     })
@@ -423,6 +448,46 @@ fn network_total_bytes(sample: &NetworkDeviceSample) -> u64 {
         .iter()
         .map(|interface| interface.rx_bytes.saturating_add(interface.tx_bytes))
         .sum()
+}
+
+fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) {
+    let mut signals = Vec::new();
+    if let Some(cpu) = &sample.cpu {
+        signals.push(RecorderSignalSample {
+            signal_id: "cpu.summary".to_string(),
+            value: cpu.total_jiffies as f64,
+        });
+    }
+    if let Some(memory) = &sample.memory {
+        let available_percent = if memory.mem_total_kb == 0 {
+            0.0
+        } else {
+            (memory.mem_available_kb as f64 / memory.mem_total_kb as f64) * 100.0
+        };
+        signals.push(RecorderSignalSample {
+            signal_id: "memory.summary".to_string(),
+            value: available_percent,
+        });
+    }
+    if let Some(network) = &sample.network {
+        signals.push(RecorderSignalSample {
+            signal_id: "network.counters".to_string(),
+            value: network_total_bytes(network) as f64,
+        });
+    }
+    if sample.kmsg.is_some() {
+        signals.push(RecorderSignalSample {
+            signal_id: "kmsg.cursor".to_string(),
+            value: 1.0,
+        });
+    }
+    if signals.is_empty() {
+        return;
+    }
+    ring.push(RecorderSample {
+        time_mono_ns: sample.time_mono_ns,
+        signals,
+    });
 }
 
 fn create_trigger_bundle(

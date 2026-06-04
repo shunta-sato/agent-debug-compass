@@ -85,6 +85,68 @@ triggers:
     assert!(timeline.contains("synthetic timeout"));
 }
 
+#[test]
+fn service_for_ms_freezes_pending_marker_from_retained_recorder_ring() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("recorder_memory.yaml"),
+        r#"
+profile: recorder_memory
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    adc_core::arm_profile(temp.path(), "recorder_memory").expect("arm profile");
+    let marker = adc_core::marker_at_received_time(
+        "marker-service-001",
+        "operator",
+        "camera frame drop observed around now",
+        1_000,
+    );
+    adc_core::write_pending_recorder_marker(temp.path(), &marker).expect("pending marker");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "80"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    let incident_id = summary["frozen_incidents"][0]
+        .as_str()
+        .expect("frozen incident id");
+    let incident_dir = temp.path().join("recorder/incidents").join(incident_id);
+    let frozen_window: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("frozen_window.json")).expect("frozen window"),
+    )
+    .expect("frozen window json");
+    let samples = fs::read_to_string(incident_dir.join("samples.jsonl")).expect("samples");
+    assert_eq!(frozen_window["marker_id"], "marker-service-001");
+    assert!(samples.contains("memory.summary"));
+    assert!(frozen_window["loss_report"]["collector_loss"]
+        .as_array()
+        .expect("collector loss")
+        .iter()
+        .any(|loss| loss["collector_id"] == "memory.summary"));
+}
+
 fn assert_v2_top_level_layout(run_dir: &Path) {
     let mut entries = fs::read_dir(run_dir)
         .expect("run dir")
