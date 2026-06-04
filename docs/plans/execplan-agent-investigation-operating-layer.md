@@ -394,8 +394,9 @@ The first implementation PR is complete when:
 2. `schemas/` contains the initial contract schemas used by current CLI/MCP outputs,
 3. `tests/golden/` contains matching minimal fixtures,
 4. the contract test runner validates the schema/fixture set,
-5. contract vocabulary is enum-constrained in Rust and JSON Schema,
-6. README separates the small first-read surface from the broader investigation contract set,
-7. CLI help, MCP tools, README examples, and golden fixtures describe the same implemented surface,
-8. artifact trust metadata is returned whenever bounded refs are opened for Agent-facing investigation output,
-9. probe results distinguish executed results from non-executed capability or policy outcomes.
+5. standard `make verify` runs contract validation,
+6. contract vocabulary is enum-constrained in Rust and JSON Schema,
+7. README separates the small first-read surface from the broader investigation contract set,
+8. CLI help, MCP tools, README examples, and golden fixtures describe the same implemented surface,
+9. artifact trust metadata is returned whenever bounded refs are opened for Agent-facing investigation output,
+10. probe results distinguish executed results from non-executed capability or policy outcomes.

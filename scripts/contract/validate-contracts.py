@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Minimal contract fixture validator, not a complete JSON Schema implementation."""
+
 import argparse
 import json
 import sys

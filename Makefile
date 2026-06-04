@@ -1,4 +1,4 @@
-.PHONY: help verify build-debug build-release format lint analysis test-unit test-integration test-scripts security-check release-gate demo-sensor-gateway e2e-local ko-selftest package-release
+.PHONY: help verify build-debug build-release format lint analysis test-unit test-integration test-scripts contract security-check release-gate demo-sensor-gateway e2e-local ko-selftest package-release
 
 help:
 	@printf '%s\n' \
@@ -12,6 +12,7 @@ help:
 	  '  make test-unit         Run unit tests' \
 	  '  make test-integration  Run integration tests' \
 	  '  make test-scripts      Run shell syntax checks and script smoke tests' \
+	  '  make contract          Validate schema/golden contract fixtures' \
 	  '  make security-check    Run Rust dependency/security/supply-chain checks' \
 	  '  make release-gate      Run verify, security-check, E2E, and package checks' \
 	  '  make demo-sensor-gateway Run the release demo locally' \
@@ -19,7 +20,7 @@ help:
 	  '  make ko-selftest       Build optional KO self-test harness' \
 	  '  make package-release   Build release bundle in dist/'
 
-verify: format lint analysis test-unit test-integration test-scripts
+verify: format lint analysis test-unit test-integration test-scripts contract
 
 build-debug:
 	cargo build --workspace
@@ -52,6 +53,9 @@ test-scripts:
 	bash scripts/install/tests/install-rust-security-tools-test.sh
 	bash scripts/security/tests/run-rust-security-checks-test.sh
 	bash scripts/security/run-rust-security-checks.sh --dry-run
+
+contract:
+	python3 scripts/contract/validate-contracts.py --schema-dir schemas --fixture-dir tests/golden
 
 security-check:
 	scripts/security/run-rust-security-checks.sh
