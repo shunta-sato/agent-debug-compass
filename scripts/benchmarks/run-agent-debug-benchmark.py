@@ -21,18 +21,32 @@ def main() -> int:
         "evidence_supported_statement_count": 0,
         "time_to_first_useful_probe_ms_total": 0,
     }
+    flight_recorder_metrics = {
+        "scenario_count": 0,
+        "direct_shell_pre_window_available_count": 0,
+        "on_demand_pre_window_available_count": 0,
+        "flight_recorder_pre_window_available_count": 0,
+        "evidence_advantage_count": 0,
+        "hypothesis_rank_improvement_count": 0,
+        "overhead_budget_violation_count": 0,
+    }
     results = []
     for scenario in scenarios:
         result = score_scenario(scenario)
         results.append(result)
         for key in metrics:
             metrics[key] += result["metrics"][key]
+        if "flight_recorder_comparison" in scenario:
+            update_flight_recorder_metrics(
+                flight_recorder_metrics, scenario["flight_recorder_comparison"]
+            )
 
     report = {
         "schema_version": "obs.agent_debug_benchmark_report.v1",
         "scenario_count": len(scenarios),
         "scenario_ids": [scenario["scenario_id"] for scenario in scenarios],
         "metrics": metrics,
+        "flight_recorder_metrics": flight_recorder_metrics,
         "results": results,
     }
     output = Path(args.output)
@@ -91,6 +105,31 @@ def score_scenario(scenario):
             "time_to_first_useful_probe_ms_total": useful_probe_ms,
         },
     }
+
+
+def update_flight_recorder_metrics(metrics, comparison):
+    metrics["scenario_count"] += 1
+    direct = comparison["direct_shell_after_ty"]
+    on_demand = comparison["adc_on_demand_only"]
+    recorder = comparison["adc_flight_recorder"]
+    if direct.get("pre_window_evidence_available", False):
+        metrics["direct_shell_pre_window_available_count"] += 1
+    if on_demand.get("pre_window_evidence_available", False):
+        metrics["on_demand_pre_window_available_count"] += 1
+    if recorder.get("pre_window_evidence_available", False):
+        metrics["flight_recorder_pre_window_available_count"] += 1
+    if recorder.get("pre_window_coverage_percent", 0) > max(
+        direct.get("pre_window_coverage_percent", 0),
+        on_demand.get("pre_window_coverage_percent", 0),
+    ):
+        metrics["evidence_advantage_count"] += 1
+    if recorder.get("hypothesis_rank_score", 0) > max(
+        direct.get("hypothesis_rank_score", 0),
+        on_demand.get("hypothesis_rank_score", 0),
+    ):
+        metrics["hypothesis_rank_improvement_count"] += 1
+    if recorder.get("recorder_overhead_within_budget", True) is not True:
+        metrics["overhead_budget_violation_count"] += 1
 
 
 if __name__ == "__main__":

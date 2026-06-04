@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.dataset_manifest.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "selector",
+    "selector_applied",
+    "dataset_types",
+    "generated_at_mono_ns",
+    "recorder_policy_version",
+    "hardware_profile",
+    "workload_profile",
+    "windows",
+    "redaction_policy",
+    "sharing_policy",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.dataset_manifest.v1"]},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "selector": {"type": "string", "minLength": 1},
+    "selector_applied": {"type": "boolean"},
+    "dataset_types": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["benchmark", "regression", "training_evaluation", "sharing"]
+      }
+    },
+    "generated_at_mono_ns": {"type": "integer", "minimum": 0},
+    "recorder_policy_version": {"type": "string", "minLength": 1},
+    "hardware_profile": {"type": "string", "minLength": 1},
+    "workload_profile": {"type": "string", "minLength": 1},
+    "windows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "incident_id",
+          "window_type",
+          "window_ref",
+          "loss_report_ref",
+          "artifact_trust_preserved",
+          "data_quality_preserved",
+          "label_state"
+        ],
+        "properties": {
+          "incident_id": {"type": "string", "minLength": 1},
+          "window_type": {
+            "type": "string",
+            "enum": [
+              "positive_incident",
+              "negative_background",
+              "near_miss",
+              "post_fix_verification",
+              "manual_retrospective"
+            ]
+          },
+          "window_ref": {"type": "string", "minLength": 1},
+          "loss_report_ref": {"type": "string", "minLength": 1},
+          "artifact_trust_preserved": {"type": "boolean"},
+          "data_quality_preserved": {"type": "boolean"},
+          "label_state": {
+            "type": "string",
+            "enum": ["weak_label", "domain_label", "agent_label", "human_label", "verification_label", "final_label", "unlabeled"]
+          }
+        }
+      }
+    },
+    "redaction_policy": {"type": "string", "minLength": 1},
+    "sharing_policy": {"type": "string", "minLength": 1},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

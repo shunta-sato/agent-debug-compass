@@ -20,6 +20,120 @@ fn generated_cli_outputs_validate_against_public_contracts() {
     let capabilities = command_json(temp.path(), ["capabilities"]);
     write_fixture("cli.obs.capability_report.v1.generated.json", &capabilities);
 
+    let recorder_status = command_json(temp.path(), ["recorder", "status"]);
+    write_fixture(
+        "cli.obs.recorder_status.v1.generated.json",
+        &recorder_status,
+    );
+    let recorder_mark = command_json_vec(
+        temp.path(),
+        vec![
+            "recorder".to_string(),
+            "mark".to_string(),
+            "--symptom".to_string(),
+            "camera frame drop observed around now".to_string(),
+        ],
+    );
+    write_fixture(
+        "cli.obs.recorder_marker.v1.generated.json",
+        &recorder_mark["marker"],
+    );
+    write_fixture(
+        "cli.obs.recorder_marker_result.v1.generated.json",
+        &recorder_mark,
+    );
+    let marker = adc_core::marker_at_received_time(
+        "marker-contract-cli",
+        "operator",
+        "camera frame drop observed around now",
+        1_000,
+    );
+    let mut ring = adc_core::RecorderRing::new("local", 2, 60_000);
+    ring.push(adc_core::RecorderSample {
+        time_mono_ns: 1_000,
+        signals: vec![adc_core::RecorderSignalSample {
+            signal_id: "memory.summary".to_string(),
+            value: 42.0,
+        }],
+    });
+    adc_core::freeze_recorder_marker(
+        temp.path(),
+        "INC-marker-contract-cli",
+        "win-marker-contract-cli",
+        &marker,
+        &ring,
+        &adc_core::default_recorder_budget(),
+    )
+    .expect("freeze recorder fixture");
+    adc_core::freeze_recorder_trigger(
+        temp.path(),
+        "INC-TRIGGER-contract-cli",
+        "win-trigger-contract-cli",
+        "kmsg_warning_pattern",
+        1_000,
+        &ring,
+        &adc_core::default_recorder_budget(),
+    )
+    .expect("freeze trigger recorder fixture");
+    let recorder_incidents = command_json(temp.path(), ["recorder", "incidents"]);
+    write_fixture(
+        "cli.obs.recorder_incident_list.v1.generated.json",
+        &recorder_incidents,
+    );
+    let recorder_incident = command_json(
+        temp.path(),
+        [
+            "recorder",
+            "incident",
+            "get",
+            "--incident-id",
+            "INC-marker-contract-cli",
+        ],
+    );
+    write_fixture(
+        "cli.obs.recorder_incident_resolution.v1.generated.json",
+        &recorder_incident,
+    );
+    write_fixture(
+        "cli.obs.recorder_incident.v1.generated.json",
+        &recorder_incident["incident"],
+    );
+    write_fixture(
+        "cli.obs.recorder_frozen_window.v1.generated.json",
+        &recorder_incident["frozen_window"],
+    );
+    write_fixture(
+        "cli.obs.loss_report.v1.generated.json",
+        &recorder_incident["frozen_window"]["loss_report"],
+    );
+    let recorder_trigger_incident = command_json(
+        temp.path(),
+        [
+            "recorder",
+            "incident",
+            "get",
+            "--incident-id",
+            "INC-TRIGGER-contract-cli",
+        ],
+    );
+    write_fixture(
+        "cli.obs.recorder_trigger_event.v1.generated.json",
+        &recorder_trigger_incident["trigger_event"],
+    );
+    let dataset_manifest = command_json(
+        temp.path(),
+        [
+            "recorder",
+            "export-dataset",
+            "--selector",
+            "profile=camera_inference_degradation",
+        ],
+    );
+    write_fixture(
+        "cli.obs.dataset_manifest.v1.generated.json",
+        &dataset_manifest,
+    );
+
     command_json(
         temp.path(),
         [

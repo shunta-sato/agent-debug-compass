@@ -40,7 +40,7 @@ Agent Debug Compass is a v2 evidence-first Agent observation context layer for R
 
 ## Remaining Platform Work
 
-- No blocking v2 platform work remains for the default Agent-first local/same-LAN managed MCP path. Future non-blocking UX improvements can add richer batch provisioning, but the current working transport is explicit bearer-token HTTP JSON-RPC MCP with optional mutual TLS, enrollment kit automation, guarded SSH-carried rootless provisioning, SSH trust-policy controls, best-effort host-key fingerprint reporting, and no listener by default.
+- No blocking v2 platform work remains before starting Flight Recorder planning for the default Agent-first local/same-LAN managed MCP path. Future non-blocking UX improvements can add richer batch provisioning, but the current working transport is explicit bearer-token HTTP JSON-RPC MCP with optional mutual TLS, enrollment kit automation, guarded SSH-carried rootless provisioning, SSH trust-policy controls, best-effort host-key fingerprint reporting, and no listener by default.
 - Optional privileged capability smoke for perf/ftrace/KO remains available through explicit target smoke scripts; it is not required for default non-root operation.
 
 ## Verification Baseline

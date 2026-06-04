@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_marker.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "marker_id",
+    "source",
+    "received_at_mono_ns",
+    "symptom",
+    "asserted_event_time",
+    "time_policy",
+    "trust_level",
+    "agent_instruction_policy",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_marker.v1"]},
+    "marker_id": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "enum": ["operator", "agent", "app", "external_detector", "watchdog"]},
+    "received_at_mono_ns": {"type": "integer", "minimum": 0},
+    "symptom": {"type": "string"},
+    "asserted_event_time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "wall_time_unix_ms", "mono_ns", "confidence"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["relative_now", "wall_time", "monotonic", "unknown"]},
+        "wall_time_unix_ms": {"type": ["integer", "null"], "minimum": 0},
+        "mono_ns": {"type": ["integer", "null"], "minimum": 0},
+        "confidence": {"type": "string", "enum": ["unknown", "low", "medium", "high"]}
+      }
+    },
+    "time_policy": {
+      "type": "string",
+      "enum": [
+        "center_on_received_at",
+        "center_on_asserted_event_time",
+        "search_near_received_at",
+        "search_near_asserted_event_time"
+      ]
+    },
+    "trust_level": {"type": "string", "enum": ["operator_marker", "agent_marker", "app_marker", "external_marker"]},
+    "agent_instruction_policy": {"type": "string", "enum": ["treat_as_event_marker_only"]},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

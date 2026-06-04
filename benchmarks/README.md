@@ -12,6 +12,17 @@ The MVP benchmark uses checked-in scenarios and static investigation-state expec
 - evidence-supported statements,
 - time to first useful probe.
 
+The `camera_inference_degradation_flight_recorder` scenario also compares:
+
+- direct shell after Ty,
+- ADC on-demand collection after Ty,
+- ADC Flight Recorder with a retained Tx pre-window.
+
+The Flight Recorder benchmark does not score root-cause accuracy. It scores
+whether pre-window evidence, loss reports, and bounded refs give the Agent a
+better falsifiable investigation starting point without exceeding recorder
+overhead budget.
+
 Run:
 
 ```sh

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_budget.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "budget_id",
+    "max_memory_bytes",
+    "max_samples_per_second",
+    "max_collectors",
+    "max_frozen_incidents",
+    "max_freeze_bytes",
+    "max_post_window_ms",
+    "max_retention_ms",
+    "max_status_write_interval_ms",
+    "max_ref_lines",
+    "max_cpu_percent",
+    "max_disk_bytes",
+    "collector_priority",
+    "degradation_policies",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_budget.v1"]},
+    "budget_id": {"type": "string", "minLength": 1},
+    "max_memory_bytes": {"type": "integer", "minimum": 1},
+    "max_samples_per_second": {"type": "integer", "minimum": 1},
+    "max_collectors": {"type": "integer", "minimum": 1},
+    "max_frozen_incidents": {"type": "integer", "minimum": 1},
+    "max_freeze_bytes": {"type": "integer", "minimum": 1},
+    "max_post_window_ms": {"type": "integer", "minimum": 0},
+    "max_retention_ms": {"type": "integer", "minimum": 1},
+    "max_status_write_interval_ms": {"type": "integer", "minimum": 1},
+    "max_ref_lines": {"type": "integer", "minimum": 1},
+    "max_cpu_percent": {"type": "number", "minimum": 0},
+    "max_disk_bytes": {"type": "integer", "minimum": 0},
+    "collector_priority": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "degradation_policies": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "drop_oldest",
+          "drop_low_priority_collector",
+          "downsample",
+          "stop_collector",
+          "refuse_freeze",
+          "partial_freeze"
+        ]
+      }
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

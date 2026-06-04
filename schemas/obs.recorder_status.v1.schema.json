@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_status.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "recorder_state",
+    "previous_state",
+    "active_profile",
+    "armed",
+    "storage",
+    "buffer_status",
+    "budget",
+    "overhead",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_status.v1"]},
+    "target_id": {"type": "string", "minLength": 1},
+    "recorder_state": {"type": "string", "enum": ["disabled", "armed", "recording", "degraded", "freezing", "frozen", "over_budget", "error"]},
+    "previous_state": {"type": ["string", "null"], "enum": ["disabled", "armed", "recording", "degraded", "freezing", "frozen", "over_budget", "error", null]},
+    "active_profile": {"type": ["string", "null"]},
+    "armed": {"type": "boolean"},
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storage_mode", "volatile", "survives_daemon_restart", "survives_target_reboot", "survives_power_loss"],
+      "properties": {
+        "storage_mode": {"type": "string", "enum": ["memory_ring"]},
+        "volatile": {"type": "boolean"},
+        "survives_daemon_restart": {"type": "boolean"},
+        "survives_target_reboot": {"type": "boolean"},
+        "survives_power_loss": {"type": "boolean"}
+      }
+    },
+    "buffer_status": {"$ref": "obs.recorder_buffer_status.v1.schema.json"},
+    "budget": {"$ref": "obs.recorder_budget.v1.schema.json"},
+    "overhead": {"$ref": "obs.recorder_overhead.v1.schema.json"},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

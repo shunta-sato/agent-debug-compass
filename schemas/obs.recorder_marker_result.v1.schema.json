@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_marker_result.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "marker",
+    "status",
+    "reason",
+    "pending_marker_ref",
+    "incident_ref",
+    "expected_incident_id",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_marker_result.v1"]},
+    "marker": {"$ref": "obs.recorder_marker.v1.schema.json"},
+    "status": {"type": "string", "enum": ["queued", "frozen", "refused"]},
+    "reason": {"type": "string", "minLength": 1},
+    "pending_marker_ref": {"type": ["string", "null"]},
+    "incident_ref": {"type": ["string", "null"]},
+    "expected_incident_id": {"type": "string", "minLength": 1},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

@@ -1,6 +1,6 @@
 pub fn print_help() {
     println!(
-        "Usage: adc <status|doctor|capabilities|observe|agent-context|snapshot|capture|target|evidence|next-probe|fleet|arm|disarm|compare|list-runs|investigate|bundle>"
+        "Usage: adc <status|doctor|capabilities|observe|agent-context|snapshot|capture|target|evidence|next-probe|fleet|recorder|arm|disarm|compare|list-runs|investigate|bundle>"
     );
 }
 
@@ -19,6 +19,9 @@ pub fn print_help_for(args: &[String]) {
         ),
         [cmd, ..] if cmd == "fleet" => println!(
             "Usage: adc fleet <init|invite|enroll|enroll-kit|targets|discover|preflight|observe|snapshot|capture|evidence>"
+        ),
+        [cmd, ..] if cmd == "recorder" => println!(
+            "Usage: adc recorder status\n       adc recorder mark --symptom TEXT [--marker-id ID]\n       adc recorder incidents\n       adc recorder incident get --incident-id ID\n       adc recorder export-dataset --selector KEY=VALUE"
         ),
         [cmd, ..] if cmd == "investigate" => {
             println!(
