@@ -225,7 +225,7 @@ pub fn run_service_for(
         {
             let run_id = next_daemon_run_id();
             create_trigger_bundle(artifact_root, &run_id, &profile, &sample, &matched)?;
-            let incident_id = format!("INC-{run_id}");
+            let incident_id = format!("INC-TRIGGER-{}", sample.time_mono_ns);
             if !recorder_freeze_budget_exhausted(
                 frozen_incidents.len(),
                 &recorder_budget,
