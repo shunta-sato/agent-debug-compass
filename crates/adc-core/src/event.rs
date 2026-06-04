@@ -30,6 +30,32 @@ pub enum ClockSource {
     CollectorClock,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClockConfidence {
+    Unknown,
+    Low,
+    Medium,
+    High,
+}
+
+impl ClockConfidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+
+impl std::fmt::Display for ClockConfidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataQuality {
     pub dropped: bool,
@@ -37,7 +63,7 @@ pub struct DataQuality {
     pub throttled: bool,
     pub missing: Vec<String>,
     pub truncated: bool,
-    pub clock_confidence: String,
+    pub clock_confidence: ClockConfidence,
     pub notes: Vec<String>,
 }
 
@@ -49,7 +75,7 @@ impl Default for DataQuality {
             throttled: false,
             missing: Vec::new(),
             truncated: false,
-            clock_confidence: "unknown".to_string(),
+            clock_confidence: ClockConfidence::Unknown,
             notes: Vec::new(),
         }
     }

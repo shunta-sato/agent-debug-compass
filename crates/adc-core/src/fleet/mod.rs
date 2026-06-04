@@ -111,7 +111,7 @@ impl FleetTargetRunResult {
             capability_ref: None,
             artifact_ref: None,
             data_quality: DataQuality {
-                clock_confidence: "medium".to_string(),
+                clock_confidence: crate::ClockConfidence::Medium,
                 ..Default::default()
             },
         }
@@ -129,7 +129,7 @@ impl FleetTargetRunResult {
             artifact_ref: None,
             data_quality: DataQuality {
                 missing: vec![format!("{}: {}", status, message.into())],
-                clock_confidence: "medium".to_string(),
+                clock_confidence: crate::ClockConfidence::Medium,
                 ..Default::default()
             },
         }
@@ -323,7 +323,7 @@ pub fn preflight_fleet_with_runner(
     });
 
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     let mut targets = Vec::new();
@@ -398,7 +398,7 @@ pub fn capture_fleet_with_runner(
     let mut matrix = Vec::new();
     let mut raw_refs = BTreeMap::new();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
 
@@ -545,7 +545,7 @@ pub fn snapshot_fleet_with_runner(
     let mut matrix = Vec::new();
     let mut raw_refs = BTreeMap::new();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
 
@@ -699,7 +699,7 @@ pub fn investigate_fleet_service(
     let mut targets = Vec::new();
     let mut raw_refs = BTreeMap::new();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
 
@@ -725,14 +725,14 @@ pub fn investigate_fleet_service(
                     "captured".to_string(),
                     Some(pack),
                     DataQuality {
-                        clock_confidence: "medium".to_string(),
+                        clock_confidence: crate::ClockConfidence::Medium,
                         ..Default::default()
                     },
                 )
             }
             Err(failure) => {
                 let mut target_data_quality = DataQuality {
-                    clock_confidence: "medium".to_string(),
+                    clock_confidence: crate::ClockConfidence::Medium,
                     ..Default::default()
                 };
                 target_data_quality

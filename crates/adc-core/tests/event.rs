@@ -1,4 +1,4 @@
-use adc_core::event::{ClockSource, DataQuality, EventEnvelope, TimeRangeNs};
+use adc_core::event::{ClockConfidence, ClockSource, DataQuality, EventEnvelope, TimeRangeNs};
 use serde_json::json;
 
 #[test]
@@ -25,7 +25,7 @@ fn event_envelope_round_trips_required_fields_and_data_quality() {
             throttled: false,
             missing: vec![],
             truncated: false,
-            clock_confidence: "high".to_string(),
+            clock_confidence: ClockConfidence::High,
             notes: vec!["sampled from /proc/stat".to_string()],
         },
     };
@@ -40,7 +40,7 @@ fn event_envelope_round_trips_required_fields_and_data_quality() {
     assert_eq!(decoded.time_range_ns.start, 123_456_000);
     assert_eq!(decoded.clock_source, ClockSource::Monotonic);
     assert_eq!(decoded.payload["total_percent"], json!(91.5));
-    assert_eq!(decoded.data_quality.clock_confidence, "high");
+    assert_eq!(decoded.data_quality.clock_confidence, ClockConfidence::High);
     assert_eq!(decoded.data_quality.notes[0], "sampled from /proc/stat");
 }
 
@@ -52,5 +52,5 @@ fn data_quality_default_is_explicitly_not_dropped_or_throttled() {
     assert_eq!(quality.drop_count, 0);
     assert!(!quality.throttled);
     assert!(!quality.truncated);
-    assert_eq!(quality.clock_confidence, "unknown");
+    assert_eq!(quality.clock_confidence, ClockConfidence::Unknown);
 }

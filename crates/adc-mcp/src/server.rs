@@ -595,7 +595,7 @@ impl AdcMcpServer {
                             missing: vec![format!(
                                 "{missing_fact} unavailable in recorded probe result"
                             )],
-                            clock_confidence: "medium".to_string(),
+                            clock_confidence: adc_core::ClockConfidence::Medium,
                             ..Default::default()
                         };
                         adc_core::probe_result_for_unavailable_capability(
@@ -618,7 +618,7 @@ impl AdcMcpServer {
                                 "{} was not executed because policy denied the probe",
                                 params.probe_id
                             )],
-                            clock_confidence: "medium".to_string(),
+                            clock_confidence: adc_core::ClockConfidence::Medium,
                             notes: vec![reason.clone()],
                             ..Default::default()
                         };

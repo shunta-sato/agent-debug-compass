@@ -380,6 +380,7 @@ pub struct AgentContextBudget {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentRefResolution {
+    pub schema_version: String,
     pub run_id: String,
     pub ref_uri: String,
     pub ref_kind: String,
@@ -601,7 +602,7 @@ pub fn build_session_evidence_index(
             total_event_count: 0,
             runs: Vec::new(),
             data_quality: DataQuality {
-                clock_confidence: "medium".to_string(),
+                clock_confidence: crate::ClockConfidence::Medium,
                 ..Default::default()
             },
         });
@@ -609,7 +610,7 @@ pub fn build_session_evidence_index(
 
     let mut runs = Vec::new();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     for entry in fs::read_dir(&runs_root).map_err(|err| {
@@ -1115,7 +1116,7 @@ fn build_continuation_pack(
     let requested_refs = continuation_refs(current_step, request);
     let mut opened_refs = Vec::new();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     for reference in &requested_refs {
@@ -1132,7 +1133,7 @@ fn build_continuation_pack(
             }
             Err(err) => {
                 let unavailable_quality = DataQuality {
-                    clock_confidence: "medium".to_string(),
+                    clock_confidence: crate::ClockConfidence::Medium,
                     missing: vec![format!("selected ref unavailable: {}", reference.raw_ref)],
                     ..Default::default()
                 };
@@ -1413,7 +1414,7 @@ fn resolve_fleet_agent_ref(
     let truncated = all_lines.len() > lines.len();
     let mut data_quality = DataQuality {
         truncated,
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if truncated {
@@ -1426,6 +1427,7 @@ fn resolve_fleet_agent_ref(
     let text = lines.join("\n");
     let data_quality_for_trust = data_quality.clone();
     Ok(AgentRefResolution {
+        schema_version: "obs.ref_resolution.v1".to_string(),
         run_id: fleet_run_id.unwrap_or("fleet").to_string(),
         ref_uri: ref_uri.to_string(),
         ref_kind: "fleet_artifact".to_string(),
@@ -1737,7 +1739,7 @@ fn cleanup_session_dir(
     dry_run: bool,
 ) -> AdcResult<InvestigationSessionCleanupReport> {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if !session_dir.is_dir() {

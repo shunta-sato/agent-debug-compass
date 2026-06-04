@@ -74,7 +74,7 @@ pub use discovery::{
     discover_same_network_targets_from_neighbors, DiscoveredTarget, TargetDiscoveryResult,
 };
 pub use error::{AdcError, AdcResult};
-pub use event::{ClockSource, DataQuality, EventEnvelope, TimeRangeNs};
+pub use event::{ClockConfidence, ClockSource, DataQuality, EventEnvelope, TimeRangeNs};
 pub use evidence::{
     aggregate_event_data_quality, build_evidence_index, default_target_id, read_evidence_index,
     read_evidence_index_text, read_raw_slice, signal_series_for, validate_cause_neutral,

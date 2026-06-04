@@ -225,7 +225,7 @@ fn combine(
     let mut matched_facts = Vec::new();
     let mut missing_fact_ids = Vec::new();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     for evaluation in evaluations {
@@ -286,7 +286,7 @@ fn facts_for_id(facts: &[EvidenceFact], fact_id: &str) -> Vec<EvidenceFact> {
 
 fn matched(condition_id: &str, matched_facts: Vec<EvidenceFact>) -> RouteConditionEvaluation {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     for fact in &matched_facts {
@@ -309,7 +309,7 @@ fn not_matched(condition_id: &str) -> RouteConditionEvaluation {
         matched_facts: Vec::new(),
         missing_fact_ids: Vec::new(),
         data_quality: DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
         explanation: "typed fact(s) were present but predicate did not match".to_string(),
@@ -323,7 +323,7 @@ fn unknown(condition_id: &str, missing_fact_ids: Vec<String>) -> RouteConditionE
         matched_facts: Vec::new(),
         missing_fact_ids,
         data_quality: DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
         explanation: "required typed fact(s) were missing".to_string(),
@@ -345,7 +345,9 @@ fn merge_data_quality(target: &mut DataQuality, source: &DataQuality) {
             target.notes.push(note.clone());
         }
     }
-    if target.clock_confidence.is_empty() {
-        target.clock_confidence = source.clock_confidence.clone();
+    if target.clock_confidence == crate::ClockConfidence::Unknown
+        && source.clock_confidence != crate::ClockConfidence::Unknown
+    {
+        target.clock_confidence = source.clock_confidence;
     }
 }

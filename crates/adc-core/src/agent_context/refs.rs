@@ -20,6 +20,7 @@ pub fn resolve_agent_ref(
             &slice.data_quality,
         );
         return Ok(AgentRefResolution {
+            schema_version: "obs.ref_resolution.v1".to_string(),
             run_id: run_id.to_string(),
             ref_uri: ref_uri.to_string(),
             ref_kind: "raw".to_string(),
@@ -56,7 +57,7 @@ pub fn resolve_agent_ref(
     let truncated = all_lines.len() > lines.len();
     let mut data_quality = DataQuality {
         truncated,
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if truncated {
@@ -74,6 +75,7 @@ pub fn resolve_agent_ref(
         &data_quality,
     );
     Ok(AgentRefResolution {
+        schema_version: "obs.ref_resolution.v1".to_string(),
         run_id: run_id.to_string(),
         ref_uri: ref_uri.to_string(),
         ref_kind: ref_kind.to_string(),
@@ -120,7 +122,7 @@ pub fn resolve_global_agent_ref(
     let truncated = all_lines.len() > lines.len();
     let mut data_quality = DataQuality {
         truncated,
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if truncated {
@@ -138,6 +140,7 @@ pub fn resolve_global_agent_ref(
         &data_quality,
     );
     Ok(AgentRefResolution {
+        schema_version: "obs.ref_resolution.v1".to_string(),
         run_id: "global".to_string(),
         ref_uri: ref_uri.to_string(),
         ref_kind: "service_investigation".to_string(),

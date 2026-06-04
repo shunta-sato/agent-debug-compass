@@ -44,7 +44,7 @@ pub fn search_events(
     let mut events = Vec::new();
     let mut matched_count = 0;
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
 

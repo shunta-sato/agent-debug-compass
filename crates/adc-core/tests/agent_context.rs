@@ -512,6 +512,7 @@ fn agent_ref_resolver_handles_raw_window_manifest_and_rejects_invalid_refs() {
 
     let raw =
         resolve_agent_ref(temp.path(), run_id, "artifact://raw/cpu.jsonl", 1).expect("raw ref");
+    assert_eq!(raw.schema_version, "obs.ref_resolution.v1");
     assert_eq!(raw.ref_kind, "raw");
     assert_eq!(raw.returned_lines, 1);
     assert!(raw.truncated);

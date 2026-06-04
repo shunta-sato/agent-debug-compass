@@ -3,7 +3,7 @@ use serde_json::json;
 
 fn dq() -> DataQuality {
     DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: adc_core::ClockConfidence::Medium,
         ..Default::default()
     }
 }

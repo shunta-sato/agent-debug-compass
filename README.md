@@ -336,6 +336,7 @@ The investigation operating layer adds separate versioned contracts for capabili
 
 - `obs.capability_report.v1`: safety-aware target capability status.
 - `obs.artifact_trust.v1`: trust and instruction policy for returned refs.
+- `obs.ref_resolution.v1`: full bounded `obs.get_ref` envelope, including returned text, truncation, trust, and data quality.
 - `obs.hypothesis_set.v1`: falsifiable investigation hypotheses.
 - `obs.evidence_graph.v1`: lightweight nodes and edges linking targets, refs, and hypotheses.
 - `obs.probe_plan.v1`: safe probe candidates with expected evidence and discrimination targets.

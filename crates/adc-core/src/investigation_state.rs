@@ -786,7 +786,9 @@ fn merge_data_quality(target: &mut DataQuality, source: &DataQuality) {
             target.notes.push(note.clone());
         }
     }
-    if target.clock_confidence.is_empty() {
-        target.clock_confidence = source.clock_confidence.clone();
+    if target.clock_confidence == crate::ClockConfidence::Unknown
+        && source.clock_confidence != crate::ClockConfidence::Unknown
+    {
+        target.clock_confidence = source.clock_confidence;
     }
 }

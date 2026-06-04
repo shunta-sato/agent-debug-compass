@@ -93,7 +93,7 @@ pub fn compare_runs(
 
     let profile_match = before_manifest.profile_id == after_manifest.profile_id;
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if profile_match {

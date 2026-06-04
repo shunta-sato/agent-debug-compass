@@ -36,7 +36,10 @@ fn is_default_data_quality(data_quality: &DataQuality) -> bool {
         && data_quality.missing.is_empty()
         && !data_quality.truncated
         && data_quality.notes.is_empty()
-        && matches!(data_quality.clock_confidence.as_str(), "medium" | "unknown")
+        && matches!(
+            data_quality.clock_confidence,
+            crate::ClockConfidence::Medium | crate::ClockConfidence::Unknown
+        )
 }
 
 pub fn extract_evidence_facts_from_ref(

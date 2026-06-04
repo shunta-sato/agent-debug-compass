@@ -29,7 +29,7 @@ pub fn discover_same_network_targets_from_neighbors(
 ) -> AdcResult<TargetDiscoveryResult> {
     let network = Ipv4Network::parse(network_cidr)?;
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     let mut seen = BTreeSet::new();
@@ -65,7 +65,7 @@ pub fn discover_same_network_targets_from_neighbors(
                 confidence: "medium".to_string(),
                 source: "neighbor_table".to_string(),
                 data_quality: DataQuality {
-                    clock_confidence: "medium".to_string(),
+                    clock_confidence: crate::ClockConfidence::Medium,
                     notes: vec![format!("neighbor_state={}", entry.state)],
                     ..Default::default()
                 },

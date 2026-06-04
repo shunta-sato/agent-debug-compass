@@ -42,7 +42,7 @@ impl Default for KernelCapabilityPaths {
 
 pub fn detect_kernel_capabilities(paths: &KernelCapabilityPaths) -> AdcResult<KernelCapabilityMap> {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     let kernel_release = read_optional_trimmed(

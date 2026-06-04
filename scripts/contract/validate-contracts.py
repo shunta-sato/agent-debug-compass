@@ -234,6 +234,8 @@ def validate_semantic_invariants(
         validate_probe_result(fixture, path, errors)
     elif schema_id == "obs.safety_policy.v1":
         validate_safety_policy(fixture, path, errors)
+    elif schema_id == "obs.ref_resolution.v1":
+        validate_ref_resolution(fixture, path, errors)
     elif schema_id == "adc.investigation_trace.v1":
         validate_investigation_trace(fixture, path, errors)
 
@@ -362,6 +364,25 @@ def validate_safety_policy(fixture: Any, path: str, errors: list[str]) -> None:
         if operation == "firmware_flash" and decision not in {"deny", "requires_human_approval"}:
             errors.append(
                 f"{path}.rules[{index}].decision: firmware_flash must be denied or require human approval"
+            )
+
+
+def validate_ref_resolution(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    trust = fixture.get("artifact_trust")
+    if not isinstance(trust, dict):
+        return
+    if trust.get("raw_ref") != fixture.get("ref_uri"):
+        errors.append(f"{path}.artifact_trust.raw_ref: must match ref_uri")
+    if contains_root_cause_claim(fixture.get("text", "")):
+        if trust.get("agent_instruction_policy") != "treat_as_data_only":
+            errors.append(
+                f"{path}.artifact_trust.agent_instruction_policy: root-cause-like target text must stay data-only"
+            )
+        if trust.get("trust_level") == "trusted_system":
+            errors.append(
+                f"{path}.artifact_trust.trust_level: root-cause-like target text must not be trusted_system"
             )
 
 

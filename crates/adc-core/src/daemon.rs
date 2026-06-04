@@ -167,7 +167,7 @@ pub fn run_service_for(
     let mut iterations = 0_u64;
     let mut previous_sample = None;
     let mut summary_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
 
@@ -225,7 +225,7 @@ fn default_state(artifact_root: &Path) -> DaemonState {
         recovered_runs: Vec::new(),
         last_run_id: None,
         data_quality: DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
     }
@@ -239,7 +239,7 @@ fn collect_live_sample(profile: &Profile) -> LiveSample {
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
 

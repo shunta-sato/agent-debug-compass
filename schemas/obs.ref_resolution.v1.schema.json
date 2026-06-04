@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.ref_resolution.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "ref_uri", "ref_kind", "content_type", "returned_lines", "total_lines", "truncated", "text", "artifact_trust", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.ref_resolution.v1"]},
+    "run_id": {"type": "string"},
+    "ref_uri": {"type": "string"},
+    "ref_kind": {"type": "string"},
+    "content_type": {"type": "string"},
+    "returned_lines": {"type": "integer", "minimum": 0},
+    "total_lines": {"type": "integer", "minimum": 0},
+    "truncated": {"type": "boolean"},
+    "text": {"type": "string"},
+    "artifact_trust": {"$ref": "obs.artifact_trust.v1.schema.json"},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}
