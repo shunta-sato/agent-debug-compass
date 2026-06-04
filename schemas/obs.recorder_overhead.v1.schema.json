@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_overhead.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "cpu_percent",
+    "memory_bytes",
+    "disk_write_bytes",
+    "artifact_bytes",
+    "wakeup_rate_hz",
+    "self_samples_dropped",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_overhead.v1"]},
+    "target_id": {"type": "string", "minLength": 1},
+    "cpu_percent": {"type": ["number", "null"], "minimum": 0},
+    "memory_bytes": {"type": ["integer", "null"], "minimum": 0},
+    "disk_write_bytes": {"type": "integer", "minimum": 0},
+    "artifact_bytes": {"type": "integer", "minimum": 0},
+    "wakeup_rate_hz": {"type": ["number", "null"], "minimum": 0},
+    "self_samples_dropped": {"type": "integer", "minimum": 0},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

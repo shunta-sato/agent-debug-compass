@@ -48,6 +48,64 @@
       "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial"]
     },
     {
+      "contract": "obs.recorder_status.v1",
+      "schema": "schemas/obs.recorder_status.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_status.v1.min.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "coverage_levels": ["static", "invariant"]
+    },
+    {
+      "contract": "obs.recorder_buffer_status.v1",
+      "schema": "schemas/obs.recorder_buffer_status.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_buffer_status.v1.min.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "coverage_levels": ["static", "invariant"]
+    },
+    {
+      "contract": "obs.recorder_budget.v1",
+      "schema": "schemas/obs.recorder_budget.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_budget.v1.min.json"],
+      "coverage_levels": ["static"]
+    },
+    {
+      "contract": "obs.recorder_marker.v1",
+      "schema": "schemas/obs.recorder_marker.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_marker.v1.min.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.recorder_incident.v1",
+      "schema": "schemas/obs.recorder_incident.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_incident.v1.min.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.recorder_frozen_window.v1",
+      "schema": "schemas/obs.recorder_frozen_window.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_frozen_window.v1.min.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.loss_report.v1",
+      "schema": "schemas/obs.loss_report.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.loss_report.v1.min.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.recorder_overhead.v1",
+      "schema": "schemas/obs.recorder_overhead.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_overhead.v1.min.json"],
+      "coverage_levels": ["static"]
+    },
+    {
       "contract": "obs.capability_report.v1",
       "schema": "schemas/obs.capability_report.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.capability_report.v1.min.json"],

@@ -286,6 +286,108 @@ assert_fails_with "probe_result.probe_id must exist in probe_plan.candidate_prob
     --schema-dir "${REPO_ROOT}/schemas" \
     --fixture-dir "${TMP_DIR}/invalid-trace"
 
+mkdir -p "${TMP_DIR}/invalid-loss-report"
+cp "${REPO_ROOT}/tests/golden/obs.loss_report.v1.min.json" \
+  "${TMP_DIR}/invalid-loss-report/obs.loss_report.v1.min.json"
+python3 - "${TMP_DIR}/invalid-loss-report/obs.loss_report.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["collector_loss"][0]["expected_samples"] = 10
+value["collector_loss"][0]["recorded_samples"] = 12
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "expected_samples must be >= recorded_samples when known" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-loss-report"
+
+mkdir -p "${TMP_DIR}/invalid-recorder-transition"
+cp "${REPO_ROOT}/tests/golden/obs.recorder_status.v1.min.json" \
+  "${TMP_DIR}/invalid-recorder-transition/obs.recorder_status.v1.min.json"
+python3 - "${TMP_DIR}/invalid-recorder-transition/obs.recorder_status.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["previous_state"] = "disabled"
+value["recorder_state"] = "freezing"
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "recorder transition disabled -> freezing is forbidden" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-recorder-transition"
+
+mkdir -p "${TMP_DIR}/invalid-incident-transition"
+cp "${REPO_ROOT}/tests/golden/obs.recorder_incident.v1.min.json" \
+  "${TMP_DIR}/invalid-incident-transition/obs.recorder_incident.v1.min.json"
+python3 - "${TMP_DIR}/invalid-incident-transition/obs.recorder_incident.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["previous_state"] = "marker_received"
+value["incident_state"] = "exported"
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "incident transition marker_received -> exported is forbidden" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-incident-transition"
+
+mkdir -p "${TMP_DIR}/invalid-frozen-window-trigger-name"
+cp "${REPO_ROOT}/tests/golden/obs.recorder_frozen_window.v1.min.json" \
+  "${TMP_DIR}/invalid-frozen-window-trigger-name/obs.recorder_frozen_window.v1.min.json"
+python3 - "${TMP_DIR}/invalid-frozen-window-trigger-name/obs.recorder_frozen_window.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["freeze_reason"] = "trigger_policy"
+value["preservation_reason"] = {
+    "kind": "trigger_policy",
+    "name": "cpu_root_cause_detected"
+}
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "trigger preservation reason must not promote root-cause claims" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-frozen-window-trigger-name"
+
+mkdir -p "${TMP_DIR}/invalid-marker-time-confidence"
+cp "${REPO_ROOT}/tests/golden/obs.recorder_marker.v1.min.json" \
+  "${TMP_DIR}/invalid-marker-time-confidence/obs.recorder_marker.v1.min.json"
+python3 - "${TMP_DIR}/invalid-marker-time-confidence/obs.recorder_marker.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+del value["asserted_event_time"]["confidence"]
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "asserted_event_time" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-marker-time-confidence"
+
 cp "${REPO_ROOT}/contracts/adc.contract_coverage.v1.json" \
   "${TMP_DIR}/coverage-missing-schema.json"
 python3 - "${TMP_DIR}/coverage-missing-schema.json" <<'PY'

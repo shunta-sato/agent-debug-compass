@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.loss_report.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "window_id", "collector_loss", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.loss_report.v1"]},
+    "window_id": {"type": "string", "minLength": 1},
+    "collector_loss": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "collector_id",
+          "expected_samples",
+          "recorded_samples",
+          "dropped_samples",
+          "gap_ranges",
+          "collectors_degraded",
+          "loss_reasons",
+          "loss_confidence"
+        ],
+        "properties": {
+          "collector_id": {"type": "string", "minLength": 1},
+          "expected_samples": {"type": ["integer", "null"], "minimum": 0},
+          "recorded_samples": {"type": "integer", "minimum": 0},
+          "dropped_samples": {"type": "integer", "minimum": 0},
+          "gap_ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start_mono_ns", "end_mono_ns"],
+              "properties": {
+                "start_mono_ns": {"type": "integer", "minimum": 0},
+                "end_mono_ns": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "collectors_degraded": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "loss_reasons": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "loss_confidence": {"type": "string", "enum": ["unknown", "low", "medium", "high"]}
+        }
+      }
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

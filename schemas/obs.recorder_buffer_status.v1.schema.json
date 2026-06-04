@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_buffer_status.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "storage_mode",
+    "volatile",
+    "survives_daemon_restart",
+    "survives_target_reboot",
+    "survives_power_loss",
+    "retention_ms",
+    "current_retained_range_mono_ns",
+    "signals",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_buffer_status.v1"]},
+    "target_id": {"type": "string", "minLength": 1},
+    "storage_mode": {"type": "string", "enum": ["memory_ring"]},
+    "volatile": {"type": "boolean"},
+    "survives_daemon_restart": {"type": "boolean"},
+    "survives_target_reboot": {"type": "boolean"},
+    "survives_power_loss": {"type": "boolean"},
+    "retention_ms": {"type": "integer", "minimum": 1},
+    "current_retained_range_mono_ns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": ["integer", "null"], "minimum": 0},
+        "end": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "signal_id",
+          "configured_interval_ms",
+          "expected_samples",
+          "recorded_samples",
+          "dropped_samples",
+          "gap_ranges",
+          "degraded",
+          "data_quality"
+        ],
+        "properties": {
+          "signal_id": {"type": "string", "minLength": 1},
+          "configured_interval_ms": {"type": "integer", "minimum": 1},
+          "expected_samples": {"type": ["integer", "null"], "minimum": 0},
+          "recorded_samples": {"type": "integer", "minimum": 0},
+          "dropped_samples": {"type": "integer", "minimum": 0},
+          "gap_ranges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start_mono_ns", "end_mono_ns"],
+              "properties": {
+                "start_mono_ns": {"type": "integer", "minimum": 0},
+                "end_mono_ns": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "degraded": {"type": "boolean"},
+          "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+        }
+      }
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

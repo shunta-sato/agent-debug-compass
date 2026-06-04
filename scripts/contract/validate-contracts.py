@@ -236,6 +236,16 @@ def validate_semantic_invariants(
         validate_safety_policy(fixture, path, errors)
     elif schema_id == "obs.ref_resolution.v1":
         validate_ref_resolution(fixture, path, errors)
+    elif schema_id == "obs.loss_report.v1":
+        validate_loss_report(fixture, path, errors)
+    elif schema_id == "obs.recorder_status.v1":
+        validate_recorder_status(fixture, path, errors)
+    elif schema_id == "obs.recorder_marker.v1":
+        validate_recorder_marker(fixture, path, errors)
+    elif schema_id == "obs.recorder_incident.v1":
+        validate_recorder_incident(fixture, path, errors)
+    elif schema_id == "obs.recorder_frozen_window.v1":
+        validate_recorder_frozen_window(fixture, path, errors)
     elif schema_id == "adc.investigation_trace.v1":
         validate_investigation_trace(fixture, path, errors)
 
@@ -389,10 +399,163 @@ def validate_ref_resolution(fixture: Any, path: str, errors: list[str]) -> None:
 def contains_root_cause_claim(value: Any) -> bool:
     if not isinstance(value, str):
         return False
-    text = " ".join(value.lower().split())
+    text = " ".join(value.lower().replace("_", " ").replace("-", " ").split())
     return bool(
-        re.search(r"\b(root cause|root-cause|cause is|caused by|is the cause)\b", text)
+        re.search(
+            r"\b(root cause|cause is|caused by|is the cause|caused|cause detected)\b",
+            text,
+        )
     )
+
+
+def validate_loss_report(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    for index, entry in enumerate(fixture.get("collector_loss", [])):
+        if not isinstance(entry, dict):
+            continue
+        expected = entry.get("expected_samples")
+        recorded = entry.get("recorded_samples")
+        dropped = entry.get("dropped_samples")
+        gaps = entry.get("gap_ranges", [])
+        reasons = entry.get("loss_reasons", [])
+        degraded = entry.get("collectors_degraded", [])
+        if isinstance(expected, int) and isinstance(recorded, int) and expected < recorded:
+            errors.append(
+                f"{path}.collector_loss[{index}].expected_samples: expected_samples must be >= recorded_samples when known"
+            )
+        if gaps and not (
+            isinstance(dropped, int)
+            and dropped > 0
+            or non_empty_string_list(reasons)
+        ):
+            errors.append(
+                f"{path}.collector_loss[{index}].gap_ranges: gap_ranges require dropped_samples > 0 or an explicit loss reason"
+            )
+        if recorded == 0 and not non_empty_string_list(reasons) and not non_empty_string_list(degraded):
+            errors.append(
+                f"{path}.collector_loss[{index}].recorded_samples: recorded_samples=0 must explain absent or degraded collector"
+            )
+        if expected is None and entry.get("loss_confidence") not in {"unknown", "low"}:
+            errors.append(
+                f"{path}.collector_loss[{index}].loss_confidence: unknown expected_samples requires unknown/low loss_confidence"
+            )
+
+
+ALLOWED_RECORDER_TRANSITIONS = {
+    ("disabled", "armed"),
+    ("armed", "recording"),
+    ("recording", "degraded"),
+    ("recording", "over_budget"),
+    ("recording", "freezing"),
+    ("degraded", "recording"),
+    ("degraded", "freezing"),
+    ("over_budget", "degraded"),
+    ("freezing", "frozen"),
+    ("freezing", "error"),
+    ("frozen", "recording"),
+    ("error", "disabled"),
+}
+
+
+def validate_recorder_status(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    previous = fixture.get("previous_state")
+    current = fixture.get("recorder_state")
+    if previous is not None and (previous, current) not in ALLOWED_RECORDER_TRANSITIONS:
+        errors.append(
+            f"{path}.recorder_state: recorder transition {previous} -> {current} is forbidden"
+        )
+    storage = fixture.get("storage")
+    if isinstance(storage, dict):
+        if storage.get("storage_mode") == "memory_ring":
+            if storage.get("volatile") is not True:
+                errors.append(f"{path}.storage.volatile: memory_ring must be volatile")
+            for field in [
+                "survives_daemon_restart",
+                "survives_target_reboot",
+                "survives_power_loss",
+            ]:
+                if storage.get(field) is not False:
+                    errors.append(f"{path}.storage.{field}: memory_ring must report false")
+
+
+def validate_recorder_marker(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    if fixture.get("agent_instruction_policy") != "treat_as_event_marker_only":
+        errors.append(
+            f"{path}.agent_instruction_policy: marker text must be treated only as an event marker"
+        )
+    asserted = fixture.get("asserted_event_time")
+    if not isinstance(asserted, dict):
+        return
+    kind = asserted.get("kind")
+    confidence = asserted.get("confidence")
+    if kind in {"relative_now", "unknown"} and confidence == "high":
+        errors.append(
+            f"{path}.asserted_event_time.confidence: relative/unknown marker time must not be high confidence"
+        )
+    if fixture.get("time_policy") == "center_on_asserted_event_time" and kind not in {
+        "wall_time",
+        "monotonic",
+    }:
+        errors.append(
+            f"{path}.time_policy: center_on_asserted_event_time requires wall_time or monotonic asserted_event_time"
+        )
+
+
+ALLOWED_INCIDENT_TRANSITIONS = {
+    ("marker_received", "pre_window_selected"),
+    ("pre_window_selected", "post_window_collecting"),
+    ("post_window_collecting", "freezing"),
+    ("pre_window_selected", "freezing"),
+    ("freezing", "frozen"),
+    ("frozen", "exported"),
+    ("frozen", "expired"),
+    ("frozen", "discarded"),
+    ("expired", "discarded"),
+}
+
+
+def validate_recorder_incident(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    previous = fixture.get("previous_state")
+    current = fixture.get("incident_state")
+    if previous is not None and (previous, current) not in ALLOWED_INCIDENT_TRANSITIONS:
+        errors.append(
+            f"{path}.incident_state: incident transition {previous} -> {current} is forbidden"
+        )
+    if current in {"frozen", "exported"}:
+        if not fixture.get("frozen_window_ref"):
+            errors.append(f"{path}.frozen_window_ref: frozen/exported incident requires frozen_window_ref")
+        if not fixture.get("loss_report_ref"):
+            errors.append(f"{path}.loss_report_ref: frozen/exported incident requires loss_report_ref")
+
+
+def validate_recorder_frozen_window(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    persistence = fixture.get("persistence")
+    if isinstance(persistence, dict):
+        if persistence.get("persistence_mode") != "bounded_artifact_bundle":
+            errors.append(
+                f"{path}.persistence.persistence_mode: frozen incident must be a bounded artifact bundle"
+            )
+        bounded_by = persistence.get("bounded_by", [])
+        for required in ["max_freeze_bytes", "max_frozen_incidents"]:
+            if required not in bounded_by:
+                errors.append(f"{path}.persistence.bounded_by: missing {required}")
+    reason = fixture.get("preservation_reason")
+    if isinstance(reason, dict) and reason.get("kind") == "trigger_policy":
+        if contains_root_cause_claim(reason.get("name", "")):
+            errors.append(
+                f"{path}.preservation_reason.name: trigger preservation reason must not promote root-cause claims"
+            )
+    if not isinstance(fixture.get("loss_report"), dict):
+        errors.append(f"{path}.loss_report: frozen window must include loss_report")
 
 
 def validate_investigation_trace(fixture: Any, path: str, errors: list[str]) -> None:
