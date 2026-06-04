@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.artifact_trust.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "raw_ref", "content_class", "trust_level", "agent_instruction_policy", "secret_scan", "prompt_injection_scan", "data_quality"],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.artifact_trust.v1"]},
@@ -17,6 +18,7 @@
     "agent_instruction_policy": {"type": "string", "enum": ["treat_as_data_only"]},
     "secret_scan": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["status", "redaction_applied", "suspected_secret_count"],
       "properties": {
         "status": {"type": "string", "enum": ["scanned"]},
@@ -26,6 +28,7 @@
     },
     "prompt_injection_scan": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["status", "markers", "severity"],
       "properties": {
         "status": {"type": "string", "enum": ["scanned"]},
@@ -33,6 +36,6 @@
         "severity": {"type": "string", "enum": ["none", "low", "medium", "high"]}
       }
     },
-    "data_quality": {"type": "object"}
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

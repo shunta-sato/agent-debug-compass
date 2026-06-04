@@ -2,16 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.probe_plan.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "probe_plan_id", "scope", "goal", "candidate_probes", "data_quality"],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.probe_plan.v1"]},
     "probe_plan_id": {"type": "string"},
     "scope": {"type": "string"},
+    "run_id": {"type": "string"},
+    "fleet_run_id": {"type": "string"},
     "goal": {"type": "string"},
     "candidate_probes": {
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["probe_id", "title", "required_capabilities", "required_privilege", "safety_status", "expected_cost", "timeout_ms", "expected_evidence", "discriminates", "failure_contract", "cause_neutral"],
         "properties": {
           "probe_id": {"type": "string"},
@@ -28,6 +32,6 @@
         }
       }
     },
-    "data_quality": {"type": "object"}
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

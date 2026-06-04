@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "adc.contract_coverage.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contracts"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["adc.contract_coverage.v1"]},
+    "contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contract", "schema", "coverage_levels"],
+        "properties": {
+          "contract": {"type": "string"},
+          "schema": {"type": "string"},
+          "static_fixtures": {"type": "array", "items": {"type": "string"}},
+          "generated_cli": {"type": "array", "items": {"type": "string"}},
+          "generated_mcp": {"type": "array", "items": {"type": "string"}},
+          "invariant_tests": {"type": "array", "items": {"type": "string"}},
+          "adversarial_tests": {"type": "array", "items": {"type": "string"}},
+          "trace_fixtures": {"type": "array", "items": {"type": "string"}},
+          "coverage_levels": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial", "trace", "deferred"]}
+          },
+          "deferred_reason": {"type": "string"}
+        }
+      }
+    }
+  }
+}

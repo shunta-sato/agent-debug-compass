@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.hypothesis_set.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "scope", "hypotheses", "data_quality"],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.hypothesis_set.v1"]},
@@ -12,21 +13,46 @@
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["hypothesis_id", "statement", "status", "confidence", "supports", "contradicts", "missing_evidence", "next_discriminating_probes", "claim_boundary", "data_quality"],
         "properties": {
           "hypothesis_id": {"type": "string"},
           "statement": {"type": "string"},
           "status": {"type": "string", "enum": ["open", "supported", "weakened", "contradicted", "needs_evidence", "closed_insufficient_evidence"]},
           "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
-          "supports": {"type": "array"},
-          "contradicts": {"type": "array"},
+          "supports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fact_id", "raw_ref", "strength"],
+              "properties": {
+                "fact_id": {"type": "string"},
+                "raw_ref": {"type": "string"},
+                "strength": {"type": "string", "enum": ["weak", "medium", "strong"]}
+              }
+            }
+          },
+          "contradicts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fact_id", "raw_ref", "strength"],
+              "properties": {
+                "fact_id": {"type": "string"},
+                "raw_ref": {"type": "string"},
+                "strength": {"type": "string", "enum": ["weak", "medium", "strong"]}
+              }
+            }
+          },
           "missing_evidence": {"type": "array", "items": {"type": "string"}},
           "next_discriminating_probes": {"type": "array", "items": {"type": "string"}},
           "claim_boundary": {"type": "string", "enum": ["hypothesis_only"]},
-          "data_quality": {"type": "object"}
+          "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
         }
       }
     },
-    "data_quality": {"type": "object"}
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

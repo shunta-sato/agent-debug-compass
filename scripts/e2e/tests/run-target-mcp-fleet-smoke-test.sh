@@ -5,7 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-"$ROOT_DIR/scripts/e2e/target/run-target-mcp-fleet-smoke.sh" \
+RUNNER="$ROOT_DIR/scripts/e2e/target/run-target-mcp-fleet-smoke.sh"
+if [[ ! -x "$RUNNER" ]]; then
+  echo "skip: optional target MCP fleet smoke runner is not present in this public tree"
+  exit 0
+fi
+
+"$RUNNER" \
   --host example-target \
   --target-id harrikka-rp4 \
   --binary-dir "$TMP_DIR/missing-release" \
@@ -125,7 +131,7 @@ esac
 PROBE
 chmod +x "$FAKE_BIN/adc"
 
-"$ROOT_DIR/scripts/e2e/target/run-target-mcp-fleet-smoke.sh" \
+"$RUNNER" \
   --host example-target \
   --target-id harrikka-rp4 \
   --mcp-server-path /home/pi/.local/bin/adc-mcp \
@@ -154,7 +160,7 @@ targets:
 YAML
 
 ADC_FAKE_EXPECTED_TARGETS=2 \
-"$ROOT_DIR/scripts/e2e/target/run-target-mcp-fleet-smoke.sh" \
+"$RUNNER" \
   --inventory "$TMP_DIR/two-targets.yaml" \
   --binary-dir "$FAKE_BIN" \
   --duration-sec 1 \

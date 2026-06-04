@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.investigation_continue.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "route_id", "session_id", "current_step_id", "opened_refs", "new_facts", "branch_evaluations", "next_actions", "investigation_route", "raw_refs", "data_quality", "budget"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.investigation_continue.v1"]},
+    "scope": {"type": "string", "enum": ["run", "fleet"]},
+    "run_id": {"type": "string"},
+    "fleet_run_id": {"type": "string"},
+    "service_name": {"type": "string"},
+    "route_id": {"type": "string"},
+    "session_id": {"type": "string"},
+    "current_step_id": {"type": "string"},
+    "opened_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "raw_ref", "ref_kind", "content_type", "artifact_trust", "summary", "item_count", "truncated", "data_quality"],
+        "properties": {
+          "label": {"type": "string"},
+          "raw_ref": {"type": "string"},
+          "ref_kind": {"type": "string"},
+          "content_type": {"type": "string"},
+          "artifact_trust": {"$ref": "obs.artifact_trust.v1.schema.json"},
+          "summary": {"type": "string"},
+          "item_count": {"type": "integer"},
+          "truncated": {"type": "boolean"},
+          "data_quality": {"$ref": "obs.data_quality.v1.schema.json"},
+          "facts": {"type": "array"},
+          "text": {"type": "string"}
+        }
+      }
+    },
+    "new_facts": {"type": "array"},
+    "branch_evaluations": {"type": "array"},
+    "next_actions": {"type": "array"},
+    "investigation_route": {"type": "object"},
+    "raw_refs": {"type": "object"},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_context_bytes", "returned_bytes", "opened_ref_count", "omitted_ref_count", "truncated_ref_count"],
+      "properties": {
+        "max_context_bytes": {"type": "integer"},
+        "returned_bytes": {"type": "integer"},
+        "opened_ref_count": {"type": "integer"},
+        "omitted_ref_count": {"type": "integer"},
+        "truncated_ref_count": {"type": "integer"}
+      }
+    }
+  }
+}

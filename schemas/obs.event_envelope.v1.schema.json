@@ -2,17 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "obs.event_envelope.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["run_id", "source", "event_type", "time_mono_ns", "time_range_ns", "clock_source", "collector_id", "profile_id", "payload", "data_quality"],
   "properties": {
     "run_id": {"type": "string"},
     "source": {"type": "string"},
     "event_type": {"type": "string"},
     "time_mono_ns": {"type": "integer"},
-    "time_range_ns": {"type": "object"},
+    "time_range_ns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "integer"},
+        "end": {"type": "integer"}
+      }
+    },
     "clock_source": {"type": "string"},
     "collector_id": {"type": "string"},
     "profile_id": {"type": "string"},
     "payload": {"type": "object"},
-    "data_quality": {"type": "object"}
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

@@ -105,6 +105,7 @@ for dir in \
   profiles \
   kernel \
   schemas \
+  contracts \
   supply-chain \
   tests/golden
 do
