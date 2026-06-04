@@ -48,10 +48,17 @@ fn generated_cli_outputs_validate_against_public_contracts() {
             "20",
         ],
     );
+    write_fixture("cli.obs.ref_resolution.v1.generated.json", &ref_resolution);
     write_fixture(
         "cli.obs.artifact_trust.v1.generated.json",
         &ref_resolution["artifact_trust"],
     );
+
+    let agent_context = command_json(
+        temp.path(),
+        ["agent-context", "--run-id", run_id, "--format", "json"],
+    );
+    write_fixture("cli.obs.agent_context.v1.generated.json", &agent_context);
 
     let symptom_context = command_json(
         temp.path(),

@@ -117,7 +117,7 @@ pub fn normalize_symptom(input: &str) -> NormalizedSymptom {
     };
 
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if kind == SymptomKind::Unknown {

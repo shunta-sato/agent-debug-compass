@@ -256,7 +256,7 @@ fn build_snapshot_window(
         sources: events.iter().map(|event| event.source.clone()).collect(),
         event_count: events.len(),
         data_quality: DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
     }
@@ -351,7 +351,7 @@ pub fn manifest_path_for(artifact_root: impl AsRef<Path>, run_id: &str) -> AdcRe
 
 fn collect_system_snapshot(run_id: &str) -> RawSystemSnapshot {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     data_quality
@@ -376,7 +376,7 @@ fn collect_system_snapshot(run_id: &str) -> RawSystemSnapshot {
 
 fn collect_capability_snapshot() -> CapabilitySnapshot {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     let board_model = read_optional_text(
@@ -449,7 +449,7 @@ fn collect_proc_file<T: Serialize>(
     parser: impl FnOnce(&str) -> AdcResult<T>,
 ) -> RawCollectorSnapshot<T> {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     match fs::read_to_string(path) {

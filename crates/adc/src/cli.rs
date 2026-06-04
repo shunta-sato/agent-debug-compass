@@ -272,7 +272,7 @@ fn write_fd_thread_snapshot(output_path: &Path) -> Result<(), String> {
     let mut total_thread_count = 0_u64;
     let mut sampled = Vec::new();
     let mut data_quality = adc_core::DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: adc_core::ClockConfidence::Medium,
         ..Default::default()
     };
 
@@ -350,7 +350,7 @@ fn write_fd_thread_snapshot(output_path: &Path) -> Result<(), String> {
 
 fn write_kernel_probe_snapshot(output_path: &Path) -> Result<(), String> {
     let mut data_quality = adc_core::DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: adc_core::ClockConfidence::Medium,
         ..Default::default()
     };
     let mut response = match adc_core::detect_default_kernel_capabilities() {
@@ -1664,7 +1664,7 @@ fn investigate_probe_result_missing_capability(args: &[String]) -> Result<(), St
         missing: vec![format!(
             "{missing_fact} unavailable in recorded probe result"
         )],
-        clock_confidence: "medium".to_string(),
+        clock_confidence: adc_core::ClockConfidence::Medium,
         ..Default::default()
     };
     let result = adc_core::probe_result_for_unavailable_capability(
@@ -1692,7 +1692,7 @@ fn investigate_probe_result_policy_denied(args: &[String]) -> Result<(), String>
         missing: vec![format!(
             "{probe_id} was not executed because policy denied the probe"
         )],
-        clock_confidence: "medium".to_string(),
+        clock_confidence: adc_core::ClockConfidence::Medium,
         notes: vec![reason.to_string()],
         ..Default::default()
     };

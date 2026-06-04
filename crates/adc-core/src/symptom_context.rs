@@ -385,7 +385,7 @@ fn collect_facts_from_refs(
 ) -> (Vec<EvidenceFact>, DataQuality) {
     let mut facts = Vec::new();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     let mut seen = BTreeSet::new();
@@ -480,7 +480,7 @@ fn resolve_fleet_ref(
     let truncated = all_lines.len() > lines.len();
     let mut data_quality = DataQuality {
         truncated,
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if truncated {
@@ -500,6 +500,7 @@ fn resolve_fleet_ref(
         &data_quality,
     );
     Ok(AgentRefResolution {
+        schema_version: "obs.ref_resolution.v1".to_string(),
         run_id: fleet_run_id.unwrap_or("fleet").to_string(),
         ref_uri: ref_uri.to_string(),
         ref_kind,
@@ -572,8 +573,10 @@ fn merge_data_quality(target: &mut DataQuality, source: &DataQuality) {
             target.notes.push(note.clone());
         }
     }
-    if target.clock_confidence == "unknown" && source.clock_confidence != "unknown" {
-        target.clock_confidence = source.clock_confidence.clone();
+    if target.clock_confidence == crate::ClockConfidence::Unknown
+        && source.clock_confidence != crate::ClockConfidence::Unknown
+    {
+        target.clock_confidence = source.clock_confidence;
     }
 }
 

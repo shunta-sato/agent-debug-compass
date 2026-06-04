@@ -67,7 +67,7 @@ pub fn evaluate_overhead(budget: &OverheadBudget, sample: &OverheadSample) -> Ov
     let throttled = !reasons.is_empty();
     let mut data_quality = DataQuality {
         throttled,
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     data_quality.notes = reasons.clone();

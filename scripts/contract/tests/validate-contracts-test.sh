@@ -246,6 +246,27 @@ assert_fails_with "hypothesis statement must not promote root-cause claims" \
     --schema-dir "${REPO_ROOT}/schemas" \
     --fixture-dir "${TMP_DIR}/invalid-hypothesis"
 
+mkdir -p "${TMP_DIR}/invalid-ref-resolution-trust"
+cp "${REPO_ROOT}/tests/golden/obs.ref_resolution.v1.min.json" \
+  "${TMP_DIR}/invalid-ref-resolution-trust/obs.ref_resolution.v1.min.json"
+python3 - "${TMP_DIR}/invalid-ref-resolution-trust/obs.ref_resolution.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["text"] = "The root cause is CPU saturation."
+value["artifact_trust"]["trust_level"] = "trusted_system"
+value["artifact_trust"]["agent_instruction_policy"] = "may_contain_instructions"
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "root-cause-like target text must stay data-only" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-ref-resolution-trust"
+
 mkdir -p "${TMP_DIR}/invalid-trace"
 cp "${REPO_ROOT}/tests/golden/adc.investigation_trace.v1.min.json" \
   "${TMP_DIR}/invalid-trace/adc.investigation_trace.v1.min.json"

@@ -22,7 +22,9 @@
       "contract": "obs.agent_context.v1",
       "schema": "schemas/obs.agent_context.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.agent_context.v1.min.json"],
-      "coverage_levels": ["static"]
+      "generated_cli": ["target/contract-fixtures/cli.obs.agent_context.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.agent_context.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp"]
     },
     {
       "contract": "obs.artifact_trust.v1",
@@ -34,6 +36,16 @@
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
       "trace_fixtures": ["target/contract-fixtures/cli.adc.investigation_trace.v1.generated.json"],
       "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial", "trace"]
+    },
+    {
+      "contract": "obs.ref_resolution.v1",
+      "schema": "schemas/obs.ref_resolution.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.ref_resolution.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.ref_resolution.v1.generated.json"],
+      "generated_mcp": ["target/contract-fixtures/mcp.obs.ref_resolution.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "generated_cli", "generated_mcp", "invariant", "adversarial"]
     },
     {
       "contract": "obs.capability_report.v1",

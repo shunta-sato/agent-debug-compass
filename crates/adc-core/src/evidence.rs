@@ -239,7 +239,7 @@ pub fn validate_cause_neutral(evidence: &EvidenceIndex) -> AdcResult<()> {
 
 pub fn aggregate_event_data_quality(events: &[EventEnvelope]) -> DataQuality {
     let mut quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     for event in events {
@@ -277,7 +277,7 @@ pub fn read_raw_slice(
     let truncated = all_lines.len() > lines.len();
     let mut data_quality = DataQuality {
         truncated,
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     if truncated {

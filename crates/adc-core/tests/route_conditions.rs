@@ -12,7 +12,7 @@ fn fact(fact_id: &str, value: serde_json::Value) -> EvidenceFact {
         source_ref: "artifact://test/ref.json".to_string(),
         value,
         data_quality: adc_core::DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: adc_core::ClockConfidence::Medium,
             ..Default::default()
         },
         observed_at_monotonic_ns: None,

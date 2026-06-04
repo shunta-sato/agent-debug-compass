@@ -106,7 +106,7 @@ pub fn investigate_service(
     })?;
 
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     let service_state = collect_service_state(&request.service_name, &mut data_quality);
@@ -181,7 +181,7 @@ pub fn collect_service_state_for_context(
 ) -> AdcResult<(ServiceStateSummary, DataQuality)> {
     validate_service_name(service_name)?;
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     let service_state = collect_service_state(service_name, &mut data_quality);

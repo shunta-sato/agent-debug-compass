@@ -262,7 +262,7 @@ fn collect_capture_sample(options: &CaptureOptions, sample_index: usize) -> Capt
         .map(String::as_str)
         .collect::<BTreeSet<_>>();
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
 
@@ -463,7 +463,7 @@ fn capture_raw_refs() -> BTreeMap<String, String> {
 
 fn aggregate_data_quality(samples: &[CaptureSample]) -> DataQuality {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     for sample in samples {

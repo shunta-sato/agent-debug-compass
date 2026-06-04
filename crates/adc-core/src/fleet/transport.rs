@@ -59,7 +59,7 @@ pub(super) fn snapshot_local_target(
         )),
         artifact_ref: Some(format!("artifact://runs/{}/manifest.json", request.run_id)),
         data_quality: DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
     })
@@ -105,7 +105,7 @@ pub(super) fn capture_local_target(
         capability_ref: None,
         artifact_ref: Some(format!("artifact://runs/{}/manifest.json", request.run_id)),
         data_quality: DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
     })
@@ -176,7 +176,7 @@ pub(super) fn snapshot_target_mcp_over_ssh(
     };
 
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     data_quality.notes.push(format!("ssh_host={host}"));
@@ -263,7 +263,7 @@ pub(super) fn capture_target_mcp_over_ssh(
     };
 
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     data_quality.notes.push(format!("ssh_host={host}"));
@@ -421,7 +421,7 @@ fn managed_mcp_captured_result(
     endpoint: String,
 ) -> FleetTargetRunResult {
     let mut data_quality = DataQuality {
-        clock_confidence: "medium".to_string(),
+        clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
     data_quality

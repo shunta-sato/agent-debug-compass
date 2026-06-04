@@ -67,14 +67,32 @@ fn generated_mcp_outputs_validate_against_public_contracts() {
         }),
     );
     write_fixture(
+        "mcp.obs.ref_resolution.v1.generated.json",
+        structured(&ref_response),
+    );
+    write_fixture(
         "mcp.obs.artifact_trust.v1.generated.json",
         &structured(&ref_response)["artifact_trust"],
+    );
+
+    let agent_context = call_tool(
+        &mut stdin,
+        &mut stdout,
+        4,
+        "obs.get_agent_context",
+        json!({
+            "run_id": run_id
+        }),
+    );
+    write_fixture(
+        "mcp.obs.agent_context.v1.generated.json",
+        structured(&agent_context),
     );
 
     let symptom = call_tool(
         &mut stdin,
         &mut stdout,
-        4,
+        5,
         "obs.investigate_bug",
         json!({
             "run_id": run_id,
@@ -89,7 +107,7 @@ fn generated_mcp_outputs_validate_against_public_contracts() {
     let start = call_tool(
         &mut stdin,
         &mut stdout,
-        5,
+        6,
         "obs.start_investigation",
         json!({
             "run_id": run_id
@@ -102,7 +120,7 @@ fn generated_mcp_outputs_validate_against_public_contracts() {
     let continuation = call_tool(
         &mut stdin,
         &mut stdout,
-        6,
+        7,
         "obs.continue_investigation",
         json!({
             "run_id": run_id,
@@ -119,7 +137,7 @@ fn generated_mcp_outputs_validate_against_public_contracts() {
     let missing_capability = call_tool(
         &mut stdin,
         &mut stdout,
-        7,
+        8,
         "obs.record_probe_result",
         json!({
             "result_kind": "not_executed_missing_capability",
@@ -137,7 +155,7 @@ fn generated_mcp_outputs_validate_against_public_contracts() {
     let policy_denied = call_tool(
         &mut stdin,
         &mut stdout,
-        8,
+        9,
         "obs.record_probe_result",
         json!({
             "result_kind": "not_executed_policy_denied",

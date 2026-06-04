@@ -31,7 +31,7 @@ pub(super) fn ready_target(
         profile_id: Some(super::profile_id_for_target(target)),
         checks,
         data_quality: DataQuality {
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
     }
@@ -56,7 +56,7 @@ pub(super) fn failed_target(
         checks,
         data_quality: DataQuality {
             missing: vec![format!("{}: {}", status, message.into())],
-            clock_confidence: "medium".to_string(),
+            clock_confidence: crate::ClockConfidence::Medium,
             ..Default::default()
         },
     }
