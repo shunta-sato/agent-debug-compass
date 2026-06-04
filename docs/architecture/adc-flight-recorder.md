@@ -25,8 +25,8 @@ asserting the true cause.
   incidents.
 - Current pain: on-demand investigation can start after the critical evidence
   window has already disappeared.
-- Desired outcome: an Agent can inspect bounded incident evidence from before
-  and after Tx without direct shell scraping or unbounded raw artifact dumps.
+- Desired outcome: an Agent can inspect bounded incident-adjacent evidence around
+  Tx without direct shell scraping or unbounded raw artifact dumps.
 - Solution-first risk: adding heavier collectors before budget, trigger, window,
   trust, coverage, and dataset contracts would make the recorder part of the
   workload.
@@ -38,6 +38,10 @@ asserting the true cause.
 
 ADC Flight Recorder preserves incident windows that existed before an Agent or
 human started investigating.
+
+The current MVP freezes retained pre-window evidence only. `post_window_ms` is
+present in the contract for forward compatibility and remains `0` until bounded
+post-window collection is implemented.
 
 The canonical experience is:
 
@@ -331,6 +335,12 @@ frozen incident:
 This is not a disk-backed rolling ring. It is a bounded incident export. The
 distinction prevents "disk-backed ring deferred" from conflicting with "frozen
 incident can be read later by an Agent".
+
+Live recorder status may be written as a low-frequency heartbeat or on explicit
+state transitions such as profile change, freeze, degradation, and daemon exit.
+It must not be written at every sample iteration; `max_status_write_interval_ms`
+is part of the recorder budget so status reporting does not become a continuous
+flash-write path.
 
 ### Trigger Policy Engine
 
@@ -705,7 +715,7 @@ incident lifecycle
 manual/external marker freeze
 retrospective marker search
 loss report
-post-window capture
+future bounded post-window capture contract
 Agent-facing recorder status
 ```
 

@@ -19,8 +19,9 @@ use crate::{
     recorder_ring_capacity_for_budget, recorder_status_for, snapshot, write_evidence_index,
     write_recorder_marker_result, write_recorder_status_artifact, AdcError, AdcResult,
     ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
-    OverheadSample, Profile, RecorderRing, RecorderSample, RecorderSignalSample, TimeRangeNs,
-    TriggerEvaluation, TriggerInput,
+    OverheadSample, Profile, RecorderRing, RecorderSample, RecorderSampleRateGovernor,
+    RecorderSignalSample, RecorderStatusWriteGovernor, TimeRangeNs, TriggerEvaluation,
+    TriggerInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,6 +175,10 @@ pub fn run_service_for(
     let mut previous_sample = None;
     let recorder_budget = default_recorder_budget();
     let mut recorder_profile_id: Option<String> = None;
+    let mut recorder_sample_rate =
+        RecorderSampleRateGovernor::new(recorder_budget.max_samples_per_second);
+    let mut recorder_status_writer =
+        RecorderStatusWriteGovernor::new(recorder_budget.max_status_write_interval_ms);
     let mut recorder_ring = RecorderRing::new(
         default_target_id(),
         recorder_ring_capacity_for_budget(&recorder_budget),
@@ -202,25 +207,37 @@ pub fn run_service_for(
         };
 
         let profile = load_profile(profile_dir, &profile_id)?;
-        if recorder_profile_id.as_deref() != Some(profile_id.as_str()) {
+        let profile_changed = recorder_profile_id.as_deref() != Some(profile_id.as_str());
+        if profile_changed {
             recorder_ring = RecorderRing::with_expected_signals(
                 default_target_id(),
                 recorder_ring_capacity_for_budget(&recorder_budget),
                 recorder_budget.max_retention_ms,
                 recorder_expected_signal_ids(&profile),
             );
+            recorder_sample_rate =
+                RecorderSampleRateGovernor::new(recorder_budget.max_samples_per_second);
             recorder_profile_id = Some(profile_id.clone());
         }
         let sample = collect_live_sample(&profile);
-        push_recorder_samples(&mut recorder_ring, &sample);
-        write_live_recorder_status(
-            artifact_root,
-            Some(&profile_id),
-            Some("recording"),
-            "recording",
-            &recorder_ring,
-            &recorder_budget,
-        )?;
+        if recorder_sample_rate.should_record(sample.time_mono_ns) {
+            push_recorder_samples(&mut recorder_ring, &sample);
+        } else {
+            recorder_ring.record_throttled_sample(format!(
+                "recorder downsampled profile samples to max_samples_per_second={}",
+                recorder_budget.max_samples_per_second
+            ));
+        }
+        if recorder_status_writer.should_write(sample.time_mono_ns, profile_changed) {
+            write_live_recorder_status(
+                artifact_root,
+                Some(&profile_id),
+                Some("recording"),
+                "recording",
+                &recorder_ring,
+                &recorder_budget,
+            )?;
+        }
         for marker in drain_pending_recorder_markers(artifact_root)? {
             let incident_id = format!("INC-{}", marker.marker_id);
             if recorder_freeze_budget_exhausted(
@@ -248,6 +265,16 @@ pub fn run_service_for(
             let result = recorder_marker_result_for_frozen(marker, incident_id.clone());
             write_recorder_marker_result(artifact_root, &result)?;
             frozen_incidents.push(incident_id);
+            if recorder_status_writer.should_write(sample.time_mono_ns, true) {
+                write_live_recorder_status(
+                    artifact_root,
+                    Some(&profile_id),
+                    Some("freezing"),
+                    "recording",
+                    &recorder_ring,
+                    &recorder_budget,
+                )?;
+            }
         }
         if let Some(matched) = evaluate_live_triggers(&profile, previous_sample.as_ref(), &sample)?
         {
@@ -269,6 +296,16 @@ pub fn run_service_for(
                     &recorder_budget,
                 )?;
                 frozen_incidents.push(incident_id);
+                if recorder_status_writer.should_write(sample.time_mono_ns, true) {
+                    write_live_recorder_status(
+                        artifact_root,
+                        Some(&profile_id),
+                        Some("freezing"),
+                        "recording",
+                        &recorder_ring,
+                        &recorder_budget,
+                    )?;
+                }
             }
             record_run(artifact_root, &run_id)?;
             captured_runs.push(run_id);

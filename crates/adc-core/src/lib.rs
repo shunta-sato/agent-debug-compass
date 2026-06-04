@@ -128,8 +128,9 @@ pub use recorder::{
     write_recorder_marker_result, write_recorder_status_artifact, AssertedEventTime, CollectorLoss,
     FrozenWindowPersistence, LossReport, PreservationReason, RecorderBudget, RecorderBufferStatus,
     RecorderFreeze, RecorderFrozenWindow, RecorderGapRange, RecorderIncident, RecorderMarker,
-    RecorderMarkerResult, RecorderOverhead, RecorderRing, RecorderSample, RecorderSignalSample,
-    RecorderSignalStatus, RecorderState, RecorderStatus, RecorderStorageStatus, RecorderTimeRange,
+    RecorderMarkerResult, RecorderOverhead, RecorderRing, RecorderSample,
+    RecorderSampleRateGovernor, RecorderSignalSample, RecorderSignalStatus, RecorderState,
+    RecorderStatus, RecorderStatusWriteGovernor, RecorderStorageStatus, RecorderTimeRange,
     RecorderTriggerFreeze, TimeRange,
 };
 pub use route_compiler::{

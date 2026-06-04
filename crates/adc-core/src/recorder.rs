@@ -99,6 +99,7 @@ pub struct RecorderBudget {
     pub max_freeze_bytes: u64,
     pub max_post_window_ms: u64,
     pub max_retention_ms: u64,
+    pub max_status_write_interval_ms: u64,
     pub max_ref_lines: u64,
     pub max_cpu_percent: f64,
     pub max_disk_bytes: u64,
@@ -183,6 +184,9 @@ pub struct CollectorLoss {
     pub collector_id: String,
     pub expected_samples: Option<u64>,
     pub recorded_samples: u64,
+    pub retained_samples_before_freeze: u64,
+    pub exported_samples: u64,
+    pub truncated_samples_due_to_freeze_budget: u64,
     pub dropped_samples: u64,
     pub gap_ranges: Vec<RecorderGapRange>,
     pub collectors_degraded: Vec<String>,
@@ -464,6 +468,8 @@ pub struct RecorderRing {
     samples: Vec<RecorderSample>,
     dropped_by_signal: BTreeMap<String, u64>,
     expected_signal_ids: BTreeSet<String>,
+    throttled_sample_count: u64,
+    throttle_notes: BTreeSet<String>,
 }
 
 impl RecorderRing {
@@ -489,6 +495,8 @@ impl RecorderRing {
             samples: Vec::new(),
             dropped_by_signal: BTreeMap::new(),
             expected_signal_ids: expected_signal_ids.into_iter().collect(),
+            throttled_sample_count: 0,
+            throttle_notes: BTreeSet::new(),
         }
     }
 
@@ -502,6 +510,11 @@ impl RecorderRing {
 
     pub fn samples(&self) -> &[RecorderSample] {
         &self.samples
+    }
+
+    pub fn record_throttled_sample(&mut self, note: impl Into<String>) {
+        self.throttled_sample_count = self.throttled_sample_count.saturating_add(1);
+        self.throttle_notes.insert(note.into());
     }
 
     pub fn status(&self) -> RecorderBufferStatus {
@@ -555,6 +568,12 @@ impl RecorderRing {
             buffer_quality.drop_count = dropped_quality.drop_count;
             buffer_quality.notes.extend(dropped_quality.notes);
         }
+        if self.throttled_sample_count > 0 {
+            buffer_quality.throttled = true;
+            buffer_quality
+                .notes
+                .extend(self.throttle_notes.iter().cloned());
+        }
 
         RecorderBufferStatus {
             schema_version: "obs.recorder_buffer_status.v1".to_string(),
@@ -597,6 +616,71 @@ impl RecorderRing {
         {
             self.drop_oldest_sample();
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RecorderSampleRateGovernor {
+    min_interval_ns: u64,
+    last_sample_mono_ns: Option<u64>,
+}
+
+impl RecorderSampleRateGovernor {
+    pub fn new(max_samples_per_second: u64) -> Self {
+        let min_interval_ns = if max_samples_per_second == 0 {
+            u64::MAX
+        } else {
+            1_000_000_000_u64 / max_samples_per_second
+        };
+        Self {
+            min_interval_ns: min_interval_ns.max(1),
+            last_sample_mono_ns: None,
+        }
+    }
+
+    pub fn should_record(&mut self, now_mono_ns: u64) -> bool {
+        let Some(last) = self.last_sample_mono_ns else {
+            self.last_sample_mono_ns = Some(now_mono_ns);
+            return true;
+        };
+        if now_mono_ns.saturating_sub(last) < self.min_interval_ns {
+            return false;
+        }
+        self.last_sample_mono_ns = Some(now_mono_ns);
+        true
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RecorderStatusWriteGovernor {
+    interval_ns: u64,
+    last_write_mono_ns: Option<u64>,
+}
+
+impl RecorderStatusWriteGovernor {
+    pub fn new(max_status_write_interval_ms: u64) -> Self {
+        Self {
+            interval_ns: max_status_write_interval_ms
+                .max(1)
+                .saturating_mul(1_000_000),
+            last_write_mono_ns: None,
+        }
+    }
+
+    pub fn should_write(&mut self, now_mono_ns: u64, force: bool) -> bool {
+        if force {
+            self.last_write_mono_ns = Some(now_mono_ns);
+            return true;
+        }
+        let Some(last) = self.last_write_mono_ns else {
+            self.last_write_mono_ns = Some(now_mono_ns);
+            return true;
+        };
+        if now_mono_ns.saturating_sub(last) < self.interval_ns {
+            return false;
+        }
+        self.last_write_mono_ns = Some(now_mono_ns);
+        true
     }
 }
 
@@ -660,8 +744,12 @@ pub fn freeze_recorder_marker(
 
     let buffer_status = ring.status();
     let (freeze_samples, sample_quality) = samples_within_freeze_budget(ring.samples(), budget)?;
-    let loss_report =
-        loss_report_for_buffer_with_quality(window_id, &buffer_status, sample_quality);
+    let loss_report = loss_report_for_buffer_with_quality(
+        window_id,
+        &buffer_status,
+        &freeze_samples,
+        sample_quality,
+    );
     let start = ring
         .samples()
         .first()
@@ -778,8 +866,12 @@ pub fn freeze_recorder_trigger(
 
     let buffer_status = ring.status();
     let (freeze_samples, sample_quality) = samples_within_freeze_budget(ring.samples(), budget)?;
-    let loss_report =
-        loss_report_for_buffer_with_quality(window_id, &buffer_status, sample_quality);
+    let loss_report = loss_report_for_buffer_with_quality(
+        window_id,
+        &buffer_status,
+        &freeze_samples,
+        sample_quality,
+    );
     let start = ring
         .samples()
         .first()
@@ -908,21 +1000,30 @@ fn validate_preservation_reason_name(name: &str) -> AdcResult<()> {
 fn loss_report_for_buffer_with_quality(
     window_id: &str,
     status: &RecorderBufferStatus,
+    exported_samples: &[RecorderSample],
     mut loss_quality: DataQuality,
 ) -> LossReport {
     let mut collector_loss = Vec::new();
     let mut total_dropped = 0_u64;
+    let exported_by_signal = recorded_counts_by_signal(exported_samples);
     for signal in &status.signals {
+        let retained_before_freeze = signal.recorded_samples;
+        let exported = exported_by_signal
+            .get(&signal.signal_id)
+            .copied()
+            .unwrap_or(0);
+        let truncated_by_freeze = retained_before_freeze.saturating_sub(exported);
         total_dropped = total_dropped.saturating_add(signal.dropped_samples);
         let mut reasons = Vec::new();
         if signal.dropped_samples > 0 {
             reasons.push("ring_capacity_drop_oldest".to_string());
         }
-        if signal.recorded_samples == 0 {
+        if exported == 0 {
             reasons.push("collector_absent_or_no_samples".to_string());
         }
-        if signal.data_quality.truncated {
+        if signal.data_quality.truncated || truncated_by_freeze > 0 {
             reasons.push("freeze_byte_budget_truncated".to_string());
+            loss_quality.truncated = true;
         }
         if !signal.data_quality.missing.is_empty() {
             reasons.push("expected_signal_missing".to_string());
@@ -933,7 +1034,10 @@ fn loss_report_for_buffer_with_quality(
         collector_loss.push(CollectorLoss {
             collector_id: signal.signal_id.clone(),
             expected_samples: signal.expected_samples,
-            recorded_samples: signal.recorded_samples,
+            recorded_samples: exported,
+            retained_samples_before_freeze: retained_before_freeze,
+            exported_samples: exported,
+            truncated_samples_due_to_freeze_budget: truncated_by_freeze,
             dropped_samples: signal.dropped_samples,
             gap_ranges: signal.gap_ranges.clone(),
             collectors_degraded: if signal.degraded {
@@ -967,6 +1071,16 @@ fn loss_report_for_buffer_with_quality(
         collector_loss,
         data_quality: loss_quality,
     }
+}
+
+fn recorded_counts_by_signal(samples: &[RecorderSample]) -> BTreeMap<String, u64> {
+    let mut counts = BTreeMap::new();
+    for sample in samples {
+        for signal in &sample.signals {
+            *counts.entry(signal.signal_id.clone()).or_default() += 1;
+        }
+    }
+    counts
 }
 
 fn samples_within_freeze_budget(
@@ -1064,6 +1178,7 @@ pub fn default_recorder_budget() -> RecorderBudget {
         max_freeze_bytes: 1024 * 1024,
         max_post_window_ms: 30_000,
         max_retention_ms: 60_000,
+        max_status_write_interval_ms: 5_000,
         max_ref_lines: 1000,
         max_cpu_percent: 5.0,
         max_disk_bytes: 4 * 1024 * 1024,

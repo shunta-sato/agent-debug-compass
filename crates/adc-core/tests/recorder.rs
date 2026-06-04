@@ -1,7 +1,7 @@
 use adc_core::{
     default_recorder_budget, freeze_recorder_marker, freeze_recorder_trigger,
     marker_at_received_time, recorder_ring_capacity_for_budget, recorder_status_for, RecorderRing,
-    RecorderSample, RecorderSignalSample,
+    RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample, RecorderStatusWriteGovernor,
 };
 
 #[test]
@@ -32,6 +32,27 @@ fn recorder_ring_capacity_respects_retention_rate_and_memory_budget() {
 
     budget.max_memory_bytes = 256;
     assert_eq!(recorder_ring_capacity_for_budget(&budget), 1);
+}
+
+#[test]
+fn status_write_governor_throttles_heartbeat_writes() {
+    let mut governor = RecorderStatusWriteGovernor::new(5_000);
+
+    assert!(governor.should_write(1_000_000_000, false));
+    assert!(!governor.should_write(1_010_000_000, false));
+    assert!(!governor.should_write(5_999_999_999, false));
+    assert!(governor.should_write(6_000_000_000, false));
+    assert!(governor.should_write(6_010_000_000, true));
+}
+
+#[test]
+fn sample_rate_governor_throttles_fast_profile_samples() {
+    let mut governor = RecorderSampleRateGovernor::new(16);
+
+    assert!(governor.should_record(1_000_000_000));
+    assert!(!governor.should_record(1_010_000_000));
+    assert!(!governor.should_record(1_061_000_000));
+    assert!(governor.should_record(1_063_000_000));
 }
 
 #[test]
@@ -208,6 +229,24 @@ fn marker_freeze_truncates_samples_when_freeze_byte_budget_is_exceeded() {
     .expect("freeze marker");
 
     assert!(freeze.frozen_window.data_quality.truncated);
+    let cpu_loss = freeze
+        .frozen_window
+        .loss_report
+        .collector_loss
+        .iter()
+        .find(|loss| loss.collector_id == "cpu.summary")
+        .expect("cpu loss");
+    let exported_lines = std::fs::read_to_string(
+        temp.path()
+            .join("recorder/incidents/INC-byte-budget/samples.jsonl"),
+    )
+    .expect("samples")
+    .lines()
+    .count() as u64;
+    assert_eq!(cpu_loss.recorded_samples, exported_lines);
+    assert_eq!(cpu_loss.exported_samples, exported_lines);
+    assert!(cpu_loss.retained_samples_before_freeze > cpu_loss.exported_samples);
+    assert!(cpu_loss.truncated_samples_due_to_freeze_budget > 0);
     assert!(freeze
         .frozen_window
         .loss_report

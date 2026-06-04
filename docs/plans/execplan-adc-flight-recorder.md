@@ -330,6 +330,7 @@ max_frozen_incidents
 max_freeze_bytes
 max_post_window_ms
 max_retention_ms
+max_status_write_interval_ms
 max_ref_lines
 max_cpu_percent
 max_disk_bytes
@@ -614,6 +615,12 @@ Current status:
   (`post_window_ms = 0`). Bounded post-window collection, MCP recorder tools,
   richer signals, public sharing datasets, and durable disk-backed rings remain
   future work.
+- Live recorder status is budgeted as a low-frequency heartbeat or explicit
+  transition write; it is not written at every sample iteration.
+- `max_samples_per_second` is enforced by downsampling profile samples before
+  recorder retention, with throttling recorded in `data_quality`.
+- Freeze-byte-budget truncation reports both retained-before-freeze and
+  exported-in-bundle sample counts in `obs.loss_report.v1`.
 
 Next steps:
 

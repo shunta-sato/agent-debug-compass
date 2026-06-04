@@ -171,6 +171,17 @@ triggers: []
         .iter()
         .any(|signal| signal["signal_id"] == "memory.summary"
             && signal["recorded_samples"].as_u64().unwrap_or(0) > 0));
+    assert_eq!(
+        recorder_status["buffer_status"]["data_quality"]["throttled"],
+        true
+    );
+    assert!(recorder_status["buffer_status"]["data_quality"]["notes"]
+        .as_array()
+        .expect("notes")
+        .iter()
+        .any(|note| note
+            .as_str()
+            .is_some_and(|note| note.contains("max_samples_per_second"))));
 }
 
 #[test]
