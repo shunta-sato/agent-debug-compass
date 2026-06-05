@@ -1014,11 +1014,12 @@ fn trust_level_for_content_class(content_class: ContentClass) -> TrustLevel {
         | ContentClass::RecorderStatus
         | ContentClass::RecorderIncident
         | ContentClass::RecorderFrozenWindow
-        | ContentClass::RecorderMarkerResult
         | ContentClass::LossReport
         | ContentClass::TriggerEvent
         | ContentClass::DatasetManifest => TrustLevel::TrustedAdcGenerated,
-        ContentClass::RecorderMarker => TrustLevel::UntrustedUserProvidedText,
+        ContentClass::RecorderMarker | ContentClass::RecorderMarkerResult => {
+            TrustLevel::UntrustedUserProvidedText
+        }
         ContentClass::Binary => TrustLevel::OpaqueArtifact,
         ContentClass::Log
         | ContentClass::Journal
@@ -1032,7 +1033,9 @@ fn agent_instruction_policy_for_content_class(
     content_class: ContentClass,
 ) -> AgentInstructionPolicy {
     match content_class {
-        ContentClass::RecorderMarker => AgentInstructionPolicy::TreatAsEventMarkerOnly,
+        ContentClass::RecorderMarker | ContentClass::RecorderMarkerResult => {
+            AgentInstructionPolicy::TreatAsEventMarkerOnly
+        }
         _ => AgentInstructionPolicy::TreatAsDataOnly,
     }
 }

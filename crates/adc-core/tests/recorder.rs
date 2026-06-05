@@ -178,6 +178,15 @@ fn service_run_status_reports_scoped_recorder_overhead_bytes() {
         .any(|missing| missing
             .as_str()
             .is_some_and(|value| value.contains("recorder CPU and memory overhead"))));
+    let notes = overhead["data_quality"]["notes"]
+        .as_array()
+        .expect("overhead notes");
+    assert!(notes.iter().any(|note| note.as_str().is_some_and(|value| {
+        value.contains("artifact_bytes is a write-path retained-size estimate")
+    })));
+    assert!(notes.iter().any(|note| note.as_str().is_some_and(|value| {
+        value.contains("status_write_bytes excludes the current status artifact write")
+    })));
 }
 
 #[test]

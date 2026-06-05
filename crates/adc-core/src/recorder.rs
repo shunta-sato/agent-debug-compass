@@ -1393,8 +1393,14 @@ fn recorder_overhead_data_quality(drop_count: u64) -> DataQuality {
             .to_string(),
     );
     data_quality.notes.push(
-        "artifact_bytes estimates retained recorder artifacts; estimated_memory_ring_bytes uses a fixed per-sample estimate"
+        "artifact_bytes is a write-path retained-size estimate and may overcount overwritten marker/status artifacts in this MVP"
             .to_string(),
     );
+    data_quality
+        .notes
+        .push("status_write_bytes excludes the current status artifact write".to_string());
+    data_quality
+        .notes
+        .push("estimated_memory_ring_bytes uses a fixed per-sample estimate".to_string());
     data_quality
 }
