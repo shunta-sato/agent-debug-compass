@@ -41,11 +41,7 @@ pub fn resolve_agent_ref(
         .join(run_id)
         .join(relative_path);
     let contents = fs::read_to_string(&path).map_err(|err| {
-        AdcError::Artifact(format!(
-            "failed to resolve artifact ref {} at {}: {err}",
-            ref_uri,
-            path.display()
-        ))
+        AdcError::Artifact(format!("failed to resolve artifact ref {ref_uri}: {err}"))
     })?;
     let max_lines = limit.clamp(1, 1_000);
     let all_lines = contents.lines().map(str::to_string).collect::<Vec<_>>();
@@ -94,9 +90,23 @@ pub fn resolve_global_agent_ref(
     ref_uri: &str,
     limit: usize,
 ) -> AdcResult<AgentRefResolution> {
+    if let Some((ref_kind, content_type, content_class, relative_path)) =
+        recorder_ref_path(ref_uri)?
+    {
+        return resolve_global_path_ref(
+            artifact_root.as_ref().join("recorder").join(relative_path),
+            "global",
+            ref_uri,
+            ref_kind,
+            content_type,
+            content_class,
+            limit,
+        );
+    }
+
     let Some(relative) = ref_uri.strip_prefix("artifact://service_investigations/") else {
         return Err(AdcError::Artifact(
-            "global ref resolution supports artifact://service_investigations/... refs; pass run_id for run-scoped refs"
+            "global ref resolution supports artifact://service_investigations/... and artifact://recorder/... refs; pass run_id for run-scoped refs"
                 .to_string(),
         ));
     };
@@ -105,6 +115,26 @@ pub fn resolve_global_agent_ref(
         .as_ref()
         .join("service_investigations")
         .join(relative);
+    resolve_global_path_ref(
+        path,
+        "global",
+        ref_uri,
+        "service_investigation",
+        "application/json",
+        crate::content_class_for_ref("service_investigation", "application/json"),
+        limit,
+    )
+}
+
+fn resolve_global_path_ref(
+    path: PathBuf,
+    run_id: &str,
+    ref_uri: &str,
+    ref_kind: &str,
+    content_type: &str,
+    content_class: crate::ContentClass,
+    limit: usize,
+) -> AdcResult<AgentRefResolution> {
     let contents = fs::read_to_string(&path).map_err(|err| {
         AdcError::Artifact(format!(
             "failed to resolve artifact ref {} at {}: {err}",
@@ -133,18 +163,14 @@ pub fn resolve_global_agent_ref(
         ));
     }
     let text = lines.join("\n");
-    let artifact_trust = crate::classify_artifact_trust(
-        ref_uri,
-        crate::content_class_for_ref("service_investigation", "application/json"),
-        &text,
-        &data_quality,
-    );
+    let artifact_trust =
+        crate::classify_artifact_trust(ref_uri, content_class, &text, &data_quality);
     Ok(AgentRefResolution {
         schema_version: "obs.ref_resolution.v1".to_string(),
-        run_id: "global".to_string(),
+        run_id: run_id.to_string(),
         ref_uri: ref_uri.to_string(),
-        ref_kind: "service_investigation".to_string(),
-        content_type: "application/json".to_string(),
+        ref_kind: ref_kind.to_string(),
+        content_type: content_type.to_string(),
         returned_lines: lines.len(),
         total_lines: all_lines.len(),
         truncated,
@@ -152,6 +178,95 @@ pub fn resolve_global_agent_ref(
         artifact_trust,
         data_quality,
     })
+}
+
+fn recorder_ref_path(
+    ref_uri: &str,
+) -> AdcResult<Option<(&'static str, &'static str, crate::ContentClass, PathBuf)>> {
+    let Some(relative) = ref_uri.strip_prefix("artifact://recorder/") else {
+        return Ok(None);
+    };
+    validate_relative_artifact_path(relative)?;
+    let parts = relative.split('/').collect::<Vec<_>>();
+    match parts.as_slice() {
+        ["status.json"] => Ok(Some((
+            "recorder_status",
+            "application/json",
+            crate::ContentClass::RecorderStatus,
+            PathBuf::from("status.json"),
+        ))),
+        ["markers", kind @ ("pending" | "results"), file] => {
+            let marker_id = file.strip_suffix(".json").ok_or_else(|| {
+                AdcError::Artifact("recorder marker refs must end with .json".to_string())
+            })?;
+            crate::validate_recorder_file_segment(marker_id, "marker_id")?;
+            let (ref_kind, content_class) = if *kind == "pending" {
+                ("recorder_marker", crate::ContentClass::RecorderMarker)
+            } else {
+                (
+                    "recorder_marker_result",
+                    crate::ContentClass::RecorderMarkerResult,
+                )
+            };
+            Ok(Some((
+                ref_kind,
+                "application/json",
+                content_class,
+                PathBuf::from("markers").join(kind).join(file),
+            )))
+        }
+        ["incidents", incident_id, artifact_name] => {
+            crate::validate_recorder_file_segment(incident_id, "incident_id")?;
+            let (ref_kind, content_type, content_class) = match *artifact_name {
+                "incident.json" => (
+                    "recorder_incident",
+                    "application/json",
+                    crate::ContentClass::RecorderIncident,
+                ),
+                "frozen_window.json" => (
+                    "recorder_frozen_window",
+                    "application/json",
+                    crate::ContentClass::RecorderFrozenWindow,
+                ),
+                "loss_report.json" => (
+                    "recorder_loss_report",
+                    "application/json",
+                    crate::ContentClass::LossReport,
+                ),
+                "samples.jsonl" => (
+                    "recorder_signal_samples",
+                    "application/jsonl",
+                    crate::ContentClass::RecorderSignalSamples,
+                ),
+                "marker.json" => (
+                    "recorder_marker",
+                    "application/json",
+                    crate::ContentClass::RecorderMarker,
+                ),
+                "trigger_event.json" => (
+                    "recorder_trigger_event",
+                    "application/json",
+                    crate::ContentClass::TriggerEvent,
+                ),
+                _ => {
+                    return Err(AdcError::Artifact(format!(
+                        "unsupported recorder incident artifact {artifact_name}"
+                    )));
+                }
+            };
+            Ok(Some((
+                ref_kind,
+                content_type,
+                content_class,
+                PathBuf::from("incidents")
+                    .join(incident_id)
+                    .join(artifact_name),
+            )))
+        }
+        _ => Err(AdcError::Artifact(format!(
+            "unsupported recorder artifact ref {ref_uri}"
+        ))),
+    }
 }
 
 pub(super) fn validate_relative_artifact_path(relative: &str) -> AdcResult<()> {

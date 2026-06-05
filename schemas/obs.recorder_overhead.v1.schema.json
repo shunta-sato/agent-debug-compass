@@ -6,10 +6,18 @@
   "required": [
     "schema_version",
     "target_id",
+    "overhead_scope",
+    "since_mono_ns",
+    "through_mono_ns",
     "cpu_percent",
     "memory_bytes",
     "disk_write_bytes",
     "artifact_bytes",
+    "status_write_bytes",
+    "frozen_artifact_bytes",
+    "samples_jsonl_bytes",
+    "incident_count",
+    "estimated_memory_ring_bytes",
     "wakeup_rate_hz",
     "self_samples_dropped",
     "data_quality"
@@ -17,10 +25,21 @@
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.recorder_overhead.v1"]},
     "target_id": {"type": "string", "minLength": 1},
+    "overhead_scope": {
+      "type": "string",
+      "enum": ["service_run", "current_status_snapshot", "incident", "artifact_root_total"]
+    },
+    "since_mono_ns": {"type": ["integer", "null"], "minimum": 0},
+    "through_mono_ns": {"type": ["integer", "null"], "minimum": 0},
     "cpu_percent": {"type": ["number", "null"], "minimum": 0},
     "memory_bytes": {"type": ["integer", "null"], "minimum": 0},
     "disk_write_bytes": {"type": "integer", "minimum": 0},
     "artifact_bytes": {"type": "integer", "minimum": 0},
+    "status_write_bytes": {"type": "integer", "minimum": 0},
+    "frozen_artifact_bytes": {"type": "integer", "minimum": 0},
+    "samples_jsonl_bytes": {"type": "integer", "minimum": 0},
+    "incident_count": {"type": "integer", "minimum": 0},
+    "estimated_memory_ring_bytes": {"type": "integer", "minimum": 0},
     "wakeup_rate_hz": {"type": ["number", "null"], "minimum": 0},
     "self_samples_dropped": {"type": "integer", "minimum": 0},
     "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}

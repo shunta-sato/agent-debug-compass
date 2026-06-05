@@ -16,12 +16,13 @@ use crate::{
     freeze_recorder_marker, freeze_recorder_trigger, parse_meminfo, parse_net_dev, parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
     recorder_marker_result_for_frozen, recorder_marker_result_for_refused,
-    recorder_ring_capacity_for_budget, recorder_status_for, snapshot, write_evidence_index,
+    recorder_overhead_for_service_run, recorder_ring_capacity_for_budget,
+    recorder_status_for_with_overhead, snapshot, write_evidence_index,
     write_recorder_marker_result, write_recorder_status_artifact, AdcError, AdcResult,
     ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
-    OverheadSample, Profile, RecorderRing, RecorderSample, RecorderSampleRateGovernor,
-    RecorderSignalSample, RecorderStatusWriteGovernor, TimeRangeNs, TriggerEvaluation,
-    TriggerInput,
+    OverheadSample, Profile, RecorderOverheadAccounting, RecorderOverheadScope, RecorderRing,
+    RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample, RecorderStatusWriteGovernor,
+    TimeRangeNs, TriggerEvaluation, TriggerInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +69,50 @@ struct MatchedLiveTrigger {
     evaluation: TriggerEvaluation,
     input: TriggerInput,
     source: String,
+}
+
+#[derive(Debug, Default, Clone)]
+struct RecorderRuntimeAccounting {
+    since_mono_ns: Option<u64>,
+    through_mono_ns: Option<u64>,
+    disk_write_bytes: u64,
+    status_write_bytes: u64,
+    status_artifact_bytes: u64,
+    frozen_artifact_bytes: u64,
+    marker_result_bytes: u64,
+    samples_jsonl_bytes: u64,
+    incident_count: u64,
+}
+
+impl RecorderRuntimeAccounting {
+    fn observe_sample_time(&mut self, mono_ns: u64) {
+        self.since_mono_ns.get_or_insert(mono_ns);
+        self.through_mono_ns = Some(mono_ns);
+    }
+
+    fn record_status_write(&mut self, bytes: u64) {
+        self.status_write_bytes = self.status_write_bytes.saturating_add(bytes);
+        self.disk_write_bytes = self.disk_write_bytes.saturating_add(bytes);
+        self.status_artifact_bytes = bytes;
+    }
+
+    fn record_marker_result_write(&mut self, bytes: u64) {
+        self.disk_write_bytes = self.disk_write_bytes.saturating_add(bytes);
+        self.marker_result_bytes = self.marker_result_bytes.saturating_add(bytes);
+    }
+
+    fn record_frozen_incident(&mut self, artifact_bytes: u64, samples_jsonl_bytes: u64) {
+        self.disk_write_bytes = self.disk_write_bytes.saturating_add(artifact_bytes);
+        self.frozen_artifact_bytes = self.frozen_artifact_bytes.saturating_add(artifact_bytes);
+        self.samples_jsonl_bytes = self.samples_jsonl_bytes.saturating_add(samples_jsonl_bytes);
+        self.incident_count = self.incident_count.saturating_add(1);
+    }
+
+    fn artifact_bytes(&self) -> u64 {
+        self.status_artifact_bytes
+            .saturating_add(self.frozen_artifact_bytes)
+            .saturating_add(self.marker_result_bytes)
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -179,6 +224,7 @@ pub fn run_service_for(
         RecorderSampleRateGovernor::new(recorder_budget.max_samples_per_second);
     let mut recorder_status_writer =
         RecorderStatusWriteGovernor::new(recorder_budget.max_status_write_interval_ms);
+    let mut recorder_accounting = RecorderRuntimeAccounting::default();
     let mut recorder_ring = RecorderRing::new(
         default_target_id(),
         recorder_ring_capacity_for_budget(&recorder_budget),
@@ -220,6 +266,7 @@ pub fn run_service_for(
             recorder_profile_id = Some(profile_id.clone());
         }
         let sample = collect_live_sample(&profile);
+        recorder_accounting.observe_sample_time(sample.time_mono_ns);
         if recorder_sample_rate.should_record(sample.time_mono_ns) {
             push_recorder_samples(&mut recorder_ring, &sample);
         } else {
@@ -229,14 +276,16 @@ pub fn run_service_for(
             ));
         }
         if recorder_status_writer.should_write(sample.time_mono_ns, profile_changed) {
-            write_live_recorder_status(
+            let status_bytes = write_live_recorder_status(
                 artifact_root,
                 Some(&profile_id),
                 Some("recording"),
                 "recording",
                 &recorder_ring,
                 &recorder_budget,
+                &recorder_accounting,
             )?;
+            recorder_accounting.record_status_write(status_bytes);
         }
         for marker in drain_pending_recorder_markers(artifact_root)? {
             let incident_id = format!("INC-{}", marker.marker_id);
@@ -250,11 +299,12 @@ pub fn run_service_for(
                     incident_id,
                     "max_frozen_incidents_exceeded",
                 );
-                write_recorder_marker_result(artifact_root, &result)?;
+                let result_path = write_recorder_marker_result(artifact_root, &result)?;
+                recorder_accounting.record_marker_result_write(file_len(&result_path)?);
                 continue;
             }
             let window_id = format!("win-{}", marker.marker_id);
-            freeze_recorder_marker(
+            let freeze = freeze_recorder_marker(
                 artifact_root,
                 &incident_id,
                 &window_id,
@@ -262,18 +312,24 @@ pub fn run_service_for(
                 &recorder_ring,
                 &recorder_budget,
             )?;
+            let (artifact_bytes, samples_jsonl_bytes) =
+                recorder_incident_byte_counts(&freeze.run_dir)?;
+            recorder_accounting.record_frozen_incident(artifact_bytes, samples_jsonl_bytes);
             let result = recorder_marker_result_for_frozen(marker, incident_id.clone());
-            write_recorder_marker_result(artifact_root, &result)?;
+            let result_path = write_recorder_marker_result(artifact_root, &result)?;
+            recorder_accounting.record_marker_result_write(file_len(&result_path)?);
             frozen_incidents.push(incident_id);
             if recorder_status_writer.should_write(sample.time_mono_ns, true) {
-                write_live_recorder_status(
+                let status_bytes = write_live_recorder_status(
                     artifact_root,
                     Some(&profile_id),
                     Some("freezing"),
                     "recording",
                     &recorder_ring,
                     &recorder_budget,
+                    &recorder_accounting,
                 )?;
+                recorder_accounting.record_status_write(status_bytes);
             }
         }
         if let Some(matched) = evaluate_live_triggers(&profile, previous_sample.as_ref(), &sample)?
@@ -286,7 +342,7 @@ pub fn run_service_for(
                 &recorder_budget,
                 &mut summary_quality,
             ) {
-                freeze_recorder_trigger(
+                let freeze = freeze_recorder_trigger(
                     artifact_root,
                     &incident_id,
                     "win-trigger-001",
@@ -295,16 +351,21 @@ pub fn run_service_for(
                     &recorder_ring,
                     &recorder_budget,
                 )?;
+                let (artifact_bytes, samples_jsonl_bytes) =
+                    recorder_incident_byte_counts(&freeze.run_dir)?;
+                recorder_accounting.record_frozen_incident(artifact_bytes, samples_jsonl_bytes);
                 frozen_incidents.push(incident_id);
                 if recorder_status_writer.should_write(sample.time_mono_ns, true) {
-                    write_live_recorder_status(
+                    let status_bytes = write_live_recorder_status(
                         artifact_root,
                         Some(&profile_id),
                         Some("freezing"),
                         "recording",
                         &recorder_ring,
                         &recorder_budget,
+                        &recorder_accounting,
                     )?;
+                    recorder_accounting.record_status_write(status_bytes);
                 }
             }
             record_run(artifact_root, &run_id)?;
@@ -319,7 +380,7 @@ pub fn run_service_for(
     }
 
     let state = initialize_state(artifact_root)?;
-    write_live_recorder_status(
+    let status_bytes = write_live_recorder_status(
         artifact_root,
         state.active_profile.as_deref(),
         Some("recording"),
@@ -330,7 +391,9 @@ pub fn run_service_for(
         },
         &recorder_ring,
         &recorder_budget,
+        &recorder_accounting,
     )?;
+    recorder_accounting.record_status_write(status_bytes);
     Ok(ServiceRunSummary {
         state,
         captured_runs,
@@ -347,17 +410,62 @@ fn write_live_recorder_status(
     recorder_state: &str,
     ring: &RecorderRing,
     budget: &crate::RecorderBudget,
-) -> AdcResult<()> {
-    let status = recorder_status_for(
+    accounting: &RecorderRuntimeAccounting,
+) -> AdcResult<u64> {
+    let buffer_status = ring.status();
+    let accounting = RecorderOverheadAccounting {
+        overhead_scope: RecorderOverheadScope::ServiceRun,
+        since_mono_ns: accounting.since_mono_ns,
+        through_mono_ns: accounting.through_mono_ns,
+        disk_write_bytes: accounting.disk_write_bytes,
+        artifact_bytes: accounting.artifact_bytes(),
+        status_write_bytes: accounting.status_write_bytes,
+        frozen_artifact_bytes: accounting.frozen_artifact_bytes,
+        samples_jsonl_bytes: accounting.samples_jsonl_bytes,
+        incident_count: accounting.incident_count,
+    };
+    let overhead =
+        recorder_overhead_for_service_run(default_target_id(), &buffer_status, accounting);
+    let status = recorder_status_for_with_overhead(
         default_target_id(),
         active_profile,
         previous_state,
         recorder_state,
-        ring.status(),
+        buffer_status,
         budget.clone(),
+        overhead,
     );
-    write_recorder_status_artifact(artifact_root, &status)?;
-    Ok(())
+    let path = write_recorder_status_artifact(artifact_root, &status)?;
+    file_len(&path)
+}
+
+fn file_len(path: &Path) -> AdcResult<u64> {
+    fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .map_err(|err| AdcError::Artifact(format!("failed to stat {}: {err}", path.display())))
+}
+
+fn recorder_incident_byte_counts(incident_dir: &Path) -> AdcResult<(u64, u64)> {
+    let mut total = 0_u64;
+    let mut samples = 0_u64;
+    for file_name in [
+        "incident.json",
+        "frozen_window.json",
+        "loss_report.json",
+        "samples.jsonl",
+        "marker.json",
+        "trigger_event.json",
+    ] {
+        let path = incident_dir.join(file_name);
+        if path.exists() {
+            let len = file_len(&path)?;
+            total = total.saturating_add(len);
+            if file_name == "samples.jsonl" {
+                samples = samples.saturating_add(len);
+            }
+        }
+    }
+    Ok((total, samples))
 }
 
 fn default_state(artifact_root: &Path) -> DaemonState {

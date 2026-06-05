@@ -151,11 +151,15 @@ adc recorder mark --symptom "camera frame drop observed around now"
 adc-targetd --service-for-ms 1000
 adc recorder incidents
 adc recorder incident get --incident-id INC-marker-...
+adc investigate ref --ref artifact://recorder/incidents/INC-marker-.../loss_report.json
 adc recorder export-dataset --selector profile=camera_inference_degradation
 ```
 
 The recorder does not claim a cause. It preserves the Tx-adjacent evidence that
 would be unavailable to an Agent that starts direct shell inspection at Ty.
+Recorder incident outputs use `artifact://recorder/...` refs by default; those
+refs are resolved through bounded ref surfaces with artifact trust and
+data_quality rather than raw filesystem paths.
 
 The output contains bounded deltas and refs:
 

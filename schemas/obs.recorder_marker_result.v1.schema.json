@@ -18,8 +18,18 @@
     "marker": {"$ref": "obs.recorder_marker.v1.schema.json"},
     "status": {"type": "string", "enum": ["queued", "frozen", "refused"]},
     "reason": {"type": "string", "minLength": 1},
-    "pending_marker_ref": {"type": ["string", "null"]},
-    "incident_ref": {"type": ["string", "null"]},
+    "pending_marker_ref": {
+      "anyOf": [
+        {"type": "string", "pattern": "^artifact://recorder/markers/pending/[^/]+\\.json$"},
+        {"type": "null"}
+      ]
+    },
+    "incident_ref": {
+      "anyOf": [
+        {"type": "string", "pattern": "^artifact://recorder/incidents/[^/]+/incident\\.json$"},
+        {"type": "null"}
+      ]
+    },
     "expected_incident_id": {"type": "string", "minLength": 1},
     "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
