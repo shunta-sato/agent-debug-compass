@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_observation_coverage.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "incident_id",
+    "window_id",
+    "time_range_mono_ns",
+    "coverage_scope",
+    "expected_signals",
+    "signals",
+    "summary",
+    "loss_report_ref",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_observation_coverage.v1"]},
+    "target_id": {"type": "string", "minLength": 1},
+    "incident_id": {"type": "string", "minLength": 1},
+    "window_id": {"type": "string", "minLength": 1},
+    "time_range_mono_ns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0}
+      }
+    },
+    "coverage_scope": {"type": "string", "enum": ["frozen_incident"]},
+    "expected_signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "signal_id",
+          "collector_id",
+          "layer",
+          "configured_interval_ms",
+          "effective_interval_ms",
+          "required_capability",
+          "capability_status",
+          "required_privilege",
+          "cost_tier",
+          "priority",
+          "expected_samples",
+          "expected",
+          "expectation_source",
+          "data_quality"
+        ],
+        "properties": {
+          "schema_version": {"type": "string", "enum": ["obs.recorder_expected_signal.v1"]},
+          "signal_id": {"type": "string", "minLength": 1},
+          "collector_id": {"type": "string", "minLength": 1},
+          "layer": {"type": "string", "enum": ["app", "middleware", "os", "kernel", "driver", "hardware", "network", "adc_self", "unknown"]},
+          "configured_interval_ms": {"type": "integer", "minimum": 1},
+          "effective_interval_ms": {"type": "integer", "minimum": 1},
+          "required_capability": {"type": ["string", "null"]},
+          "capability_status": {"type": "string", "enum": ["supported", "degraded", "unavailable", "requires_privilege", "unsafe", "unknown"]},
+          "required_privilege": {"type": "string", "minLength": 1},
+          "cost_tier": {"type": "string", "minLength": 1},
+          "priority": {"type": "string", "minLength": 1},
+          "expected_samples": {"type": ["integer", "null"], "minimum": 0},
+          "expected": {"type": "boolean"},
+          "expectation_source": {"type": "string", "minLength": 1},
+          "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+        }
+      }
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "signal_id",
+          "expected",
+          "coverage_state",
+          "coverage_confidence",
+          "configured_interval_ms",
+          "effective_interval_ms",
+          "expected_samples_configured",
+          "expected_samples_budgeted",
+          "expected_samples",
+          "expected_samples_basis",
+          "retained_samples_before_freeze",
+          "exported_samples",
+          "dropped_samples",
+          "truncated_samples_due_to_freeze_budget",
+          "loss_report_ref",
+          "loss_collector_id",
+          "loss_reasons",
+          "capability_status",
+          "data_quality"
+        ],
+        "properties": {
+          "signal_id": {"type": "string", "minLength": 1},
+          "expected": {"type": "boolean"},
+          "coverage_state": {"type": "string", "enum": ["covered", "partial", "missing", "unavailable", "not_expected", "degraded", "unknown"]},
+          "coverage_confidence": {"type": "string", "enum": ["unknown", "low", "medium", "high"]},
+          "configured_interval_ms": {"type": "integer", "minimum": 1},
+          "effective_interval_ms": {"type": "integer", "minimum": 1},
+          "expected_samples_configured": {"type": ["integer", "null"], "minimum": 0},
+          "expected_samples_budgeted": {"type": ["integer", "null"], "minimum": 0},
+          "expected_samples": {"type": ["integer", "null"], "minimum": 0},
+          "expected_samples_basis": {"type": "string", "enum": ["configured_profile_interval", "budgeted_recorder_interval", "inferred", "unknown"]},
+          "retained_samples_before_freeze": {"type": "integer", "minimum": 0},
+          "exported_samples": {"type": "integer", "minimum": 0},
+          "dropped_samples": {"type": "integer", "minimum": 0},
+          "truncated_samples_due_to_freeze_budget": {"type": "integer", "minimum": 0},
+          "loss_report_ref": {"type": "string", "minLength": 1},
+          "loss_collector_id": {"type": "string", "minLength": 1},
+          "loss_reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "capability_status": {"type": "string", "enum": ["supported", "degraded", "unavailable", "requires_privilege", "unsafe", "unknown"]},
+          "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_signal_count",
+        "covered_signal_count",
+        "missing_signal_count",
+        "partial_signal_count",
+        "unavailable_signal_count",
+        "overall_coverage_percent"
+      ],
+      "properties": {
+        "expected_signal_count": {"type": "integer", "minimum": 0},
+        "covered_signal_count": {"type": "integer", "minimum": 0},
+        "missing_signal_count": {"type": "integer", "minimum": 0},
+        "partial_signal_count": {"type": "integer", "minimum": 0},
+        "unavailable_signal_count": {"type": "integer", "minimum": 0},
+        "overall_coverage_percent": {"type": "number", "minimum": 0}
+      }
+    },
+    "loss_report_ref": {
+      "type": "string",
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/loss_report\\.json$"
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

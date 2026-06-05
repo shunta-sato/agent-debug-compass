@@ -141,7 +141,56 @@ Manual, operator, Agent, and app markers are the safest first way to prove
 rolling-buffer value because they do not require trigger heuristics. Automatic
 trigger policy follows after marker-based freeze is working.
 
-### 5. Marker Time Semantics
+### 5. Observation Coverage Comes Before Trigger Interpretation
+
+Flight Recorder evidence is useful only when Agents can tell the difference
+between a signal that was absent and a signal that was never observed. Before
+ADC expands autonomous trigger policy, each frozen incident must describe the
+active expected signal model and the coverage achieved for that incident.
+
+Coverage responsibilities:
+
+```text
+loss_report:
+  source of truth for retained/exported/dropped/truncated/gap counts
+
+observation_coverage:
+  source of truth for expected signals, effective sampling interval, capability
+  availability, and coverage state
+```
+
+The current coverage model distinguishes:
+
+```text
+configured_interval_ms:
+  interval requested by the active recorder profile
+
+effective_interval_ms:
+  interval after recorder sample-rate budget and downsampling
+
+expected_samples_basis:
+  configured_profile_interval | budgeted_recorder_interval | inferred | unknown
+```
+
+Coverage states are cause-neutral:
+
+```text
+covered
+partial
+missing
+unavailable
+degraded
+unknown
+not_expected
+```
+
+`missing` means the signal was expected and theoretically collectible but no
+retained/exported sample exists. `unavailable` means a required capability,
+privilege, or collector availability boundary prevented collection. `not_expected`
+is not emitted for the whole global signal catalog; it is used only when a
+caller or fixture asks about a specific signal outside the active profile.
+
+### 6. Marker Time Semantics
 
 Marker time is evidence with confidence, not an exact fact by default.
 
@@ -222,7 +271,7 @@ Example high-confidence external marker:
 }
 ```
 
-### 6. Trigger Is a Symptom Policy Engine
+### 7. Trigger Is a Symptom Policy Engine
 
 A trigger is not only a threshold expression.
 

@@ -9,6 +9,7 @@
     "incident_ref",
     "frozen_window_ref",
     "loss_report_ref",
+    "coverage_ref",
     "samples_ref",
     "marker",
     "trigger_event",
@@ -22,6 +23,7 @@
     "incident_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/incident\\.json$"},
     "frozen_window_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/frozen_window\\.json$"},
     "loss_report_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/loss_report\\.json$"},
+    "coverage_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/coverage\\.json$"},
     "samples_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/samples\\.jsonl$"},
     "marker": {
       "anyOf": [
