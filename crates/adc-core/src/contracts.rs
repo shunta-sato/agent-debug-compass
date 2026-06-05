@@ -40,6 +40,15 @@ pub enum ContentClass {
     Summary,
     Artifact,
     Binary,
+    RecorderMarker,
+    RecorderSignalSamples,
+    RecorderStatus,
+    RecorderIncident,
+    RecorderFrozenWindow,
+    RecorderMarkerResult,
+    LossReport,
+    TriggerEvent,
+    DatasetManifest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +65,7 @@ pub enum TrustLevel {
 #[serde(rename_all = "snake_case")]
 pub enum AgentInstructionPolicy {
     TreatAsDataOnly,
+    TreatAsEventMarkerOnly,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -523,7 +533,7 @@ pub fn classify_artifact_trust(
         raw_ref: raw_ref.to_string(),
         content_class,
         trust_level: trust_level_for_content_class(content_class),
-        agent_instruction_policy: AgentInstructionPolicy::TreatAsDataOnly,
+        agent_instruction_policy: agent_instruction_policy_for_content_class(content_class),
         secret_scan: SecretScanResult {
             status: ScanStatus::Scanned,
             redaction_applied: redaction_applied(text),
@@ -1000,12 +1010,33 @@ fn trust_level_for_content_class(content_class: ContentClass) -> TrustLevel {
         | ContentClass::MetricSeries
         | ContentClass::Telemetry
         | ContentClass::Trace => TrustLevel::TrustedAdcGenerated,
+        ContentClass::RecorderSignalSamples
+        | ContentClass::RecorderStatus
+        | ContentClass::RecorderIncident
+        | ContentClass::RecorderFrozenWindow
+        | ContentClass::LossReport
+        | ContentClass::TriggerEvent
+        | ContentClass::DatasetManifest => TrustLevel::TrustedAdcGenerated,
+        ContentClass::RecorderMarker | ContentClass::RecorderMarkerResult => {
+            TrustLevel::UntrustedUserProvidedText
+        }
         ContentClass::Binary => TrustLevel::OpaqueArtifact,
         ContentClass::Log
         | ContentClass::Journal
         | ContentClass::DomainEvent
         | ContentClass::Config => TrustLevel::UntrustedTargetText,
         ContentClass::Artifact => TrustLevel::OpaqueArtifact,
+    }
+}
+
+fn agent_instruction_policy_for_content_class(
+    content_class: ContentClass,
+) -> AgentInstructionPolicy {
+    match content_class {
+        ContentClass::RecorderMarker | ContentClass::RecorderMarkerResult => {
+            AgentInstructionPolicy::TreatAsEventMarkerOnly
+        }
+        _ => AgentInstructionPolicy::TreatAsDataOnly,
     }
 }
 

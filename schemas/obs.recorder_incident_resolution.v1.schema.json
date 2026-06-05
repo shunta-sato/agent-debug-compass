@@ -6,16 +6,23 @@
   "required": [
     "schema_version",
     "incident_id",
+    "incident_ref",
+    "frozen_window_ref",
+    "loss_report_ref",
+    "samples_ref",
     "marker",
     "trigger_event",
     "incident",
     "frozen_window",
-    "incident_dir",
     "data_quality"
   ],
   "properties": {
     "schema_version": {"type": "string", "enum": ["obs.recorder_incident_resolution.v1"]},
     "incident_id": {"type": "string", "minLength": 1},
+    "incident_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/incident\\.json$"},
+    "frozen_window_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/frozen_window\\.json$"},
+    "loss_report_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/loss_report\\.json$"},
+    "samples_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/samples\\.jsonl$"},
     "marker": {
       "anyOf": [
         {"$ref": "obs.recorder_marker.v1.schema.json"},
@@ -30,7 +37,6 @@
     },
     "incident": {"$ref": "obs.recorder_incident.v1.schema.json"},
     "frozen_window": {"$ref": "obs.recorder_frozen_window.v1.schema.json"},
-    "incident_dir": {"type": "string", "minLength": 1},
     "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

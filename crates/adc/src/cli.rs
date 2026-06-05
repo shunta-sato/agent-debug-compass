@@ -159,13 +159,12 @@ fn recorder_mark(args: &[String]) -> Result<(), String> {
         .unwrap_or_else(|| format!("marker-{received_at}"));
     let incident_id = format!("INC-{marker_id}");
     let marker = adc_core::marker_at_received_time(&marker_id, "operator", symptom, received_at);
-    let marker_path = adc_core::write_pending_recorder_marker(&artifact_root, &marker)
+    adc_core::write_pending_recorder_marker(&artifact_root, &marker)
         .map_err(|err| err.to_string())?;
-    let result = adc_core::recorder_marker_result_for_queued(
-        marker,
-        incident_id,
-        marker_path.display().to_string(),
-    );
+    let pending_marker_ref =
+        adc_core::recorder_pending_marker_ref(&marker_id).map_err(|err| err.to_string())?;
+    let result =
+        adc_core::recorder_marker_result_for_queued(marker, incident_id, pending_marker_ref);
     adc_core::write_recorder_marker_result(&artifact_root, &result)
         .map_err(|err| err.to_string())?;
     serde_json::to_writer_pretty(std::io::stdout(), &result)
@@ -282,14 +281,26 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
     let incident: serde_json::Value = read_json_file(&incident_dir.join("incident.json"))?;
     let frozen_window: serde_json::Value =
         read_json_file(&incident_dir.join("frozen_window.json"))?;
+    let incident_ref = adc_core::recorder_incident_artifact_ref(incident_id, "incident.json")
+        .map_err(|err| err.to_string())?;
+    let frozen_window_ref =
+        adc_core::recorder_incident_artifact_ref(incident_id, "frozen_window.json")
+            .map_err(|err| err.to_string())?;
+    let loss_report_ref = adc_core::recorder_incident_artifact_ref(incident_id, "loss_report.json")
+        .map_err(|err| err.to_string())?;
+    let samples_ref = adc_core::recorder_incident_artifact_ref(incident_id, "samples.jsonl")
+        .map_err(|err| err.to_string())?;
     let response = serde_json::json!({
         "schema_version": "obs.recorder_incident_resolution.v1",
         "incident_id": incident_id,
+        "incident_ref": incident_ref,
+        "frozen_window_ref": frozen_window_ref,
+        "loss_report_ref": loss_report_ref,
+        "samples_ref": samples_ref,
         "marker": marker,
         "trigger_event": trigger_event,
         "incident": incident,
         "frozen_window": frozen_window,
-        "incident_dir": incident_dir.display().to_string(),
         "data_quality": {
             "dropped": false,
             "drop_count": 0,
@@ -1639,7 +1650,7 @@ fn investigate(args: &[String]) -> Result<(), String> {
         [scope, kind, rest @ ..] if scope == "service" => investigate_service(kind, rest),
         [cmd, rest @ ..] if cmd == "ref" => investigate_ref(rest),
         _ => Err(
-            "usage: adc investigate bug --symptom <text> [--run-id <id>|--fleet-run-id <id>|--duration-ms N] [--service-name NAME] [--inventory PATH] | investigate start (--run-id <id>|--fleet-run-id <id>) [--service-name NAME] [--inventory PATH] [--journal-lines N] [--format json|markdown] | investigate continue (--run-id <id>|--fleet-run-id <id>) --step-id <id> [--ref-label LABEL] [--ref REF] | investigate session (--run-id <id>|--fleet-run-id <id>) --session-id <id> | investigate cleanup-sessions (--run-id <id>|--fleet-run-id <id>) [--max-sessions N] [--max-age-days N] [--dry-run|--execute] | investigate probe-result missing-capability --probe-plan-id ID --probe-id ID --missing-fact FACT [--hypothesis-id H] | investigate probe-result policy-denied --probe-plan-id ID --probe-id ID --reason TEXT [--hypothesis-id H] | investigate route-packs | investigate service <name> [--journal-lines N] | investigate ref --ref artifact://service_investigations/... [--limit N]"
+            "usage: adc investigate bug --symptom <text> [--run-id <id>|--fleet-run-id <id>|--duration-ms N] [--service-name NAME] [--inventory PATH] | investigate start (--run-id <id>|--fleet-run-id <id>) [--service-name NAME] [--inventory PATH] [--journal-lines N] [--format json|markdown] | investigate continue (--run-id <id>|--fleet-run-id <id>) --step-id <id> [--ref-label LABEL] [--ref REF] | investigate session (--run-id <id>|--fleet-run-id <id>) --session-id <id> | investigate cleanup-sessions (--run-id <id>|--fleet-run-id <id>) [--max-sessions N] [--max-age-days N] [--dry-run|--execute] | investigate probe-result missing-capability --probe-plan-id ID --probe-id ID --missing-fact FACT [--hypothesis-id H] | investigate probe-result policy-denied --probe-plan-id ID --probe-id ID --reason TEXT [--hypothesis-id H] | investigate route-packs | investigate service <name> [--journal-lines N] | investigate ref --ref artifact://service_investigations/...|artifact://recorder/... [--limit N]"
                 .to_string(),
         ),
     }

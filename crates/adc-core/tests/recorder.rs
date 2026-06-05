@@ -1,6 +1,9 @@
+use std::time::Duration;
+
 use adc_core::{
-    default_recorder_budget, freeze_recorder_marker, freeze_recorder_trigger,
-    marker_at_received_time, recorder_ring_capacity_for_budget, recorder_status_for, RecorderRing,
+    arm_profile, default_recorder_budget, freeze_recorder_marker, freeze_recorder_trigger,
+    marker_at_received_time, read_recorder_status_artifact, recorder_ring_capacity_for_budget,
+    recorder_status_for, run_service_for, write_pending_recorder_marker, RecorderRing,
     RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample, RecorderStatusWriteGovernor,
 };
 
@@ -130,6 +133,60 @@ fn recorder_status_exposes_budget_overhead_and_volatility() {
     assert!(status.storage.volatile);
     assert_eq!(status.budget.schema_version, "obs.recorder_budget.v1");
     assert_eq!(status.overhead.schema_version, "obs.recorder_overhead.v1");
+}
+
+#[test]
+fn service_run_status_reports_scoped_recorder_overhead_bytes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    arm_profile(temp.path(), "pi5_basic").expect("arm profile");
+    let marker = marker_at_received_time(
+        "marker-overhead",
+        "operator",
+        "camera frame drop observed around now",
+        1_000,
+    );
+    write_pending_recorder_marker(temp.path(), &marker).expect("write marker");
+
+    run_service_for(
+        temp.path(),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("profiles"),
+        Duration::from_millis(120),
+    )
+    .expect("service run");
+
+    let status = read_recorder_status_artifact(temp.path()).expect("live recorder status");
+    let overhead = serde_json::to_value(&status.overhead).expect("overhead json");
+    assert_eq!(overhead["overhead_scope"], "service_run");
+    assert!(overhead["status_write_bytes"].as_u64().unwrap_or(0) > 0);
+    assert!(overhead["frozen_artifact_bytes"].as_u64().unwrap_or(0) > 0);
+    assert!(overhead["samples_jsonl_bytes"].as_u64().unwrap_or(0) > 0);
+    assert!(overhead["incident_count"].as_u64().unwrap_or(0) >= 1);
+    assert!(
+        overhead["estimated_memory_ring_bytes"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+    );
+    assert!(overhead["cpu_percent"].is_null());
+    assert!(overhead["memory_bytes"].is_null());
+    assert!(overhead["data_quality"]["missing"]
+        .as_array()
+        .expect("missing overhead evidence")
+        .iter()
+        .any(|missing| missing
+            .as_str()
+            .is_some_and(|value| value.contains("recorder CPU and memory overhead"))));
+    let notes = overhead["data_quality"]["notes"]
+        .as_array()
+        .expect("overhead notes");
+    assert!(notes.iter().any(|note| note.as_str().is_some_and(|value| {
+        value.contains("artifact_bytes is a write-path retained-size estimate")
+    })));
+    assert!(notes.iter().any(|note| note.as_str().is_some_and(|value| {
+        value.contains("status_write_bytes excludes the current status artifact write")
+    })));
 }
 
 #[test]

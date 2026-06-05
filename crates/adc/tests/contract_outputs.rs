@@ -25,6 +25,10 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.recorder_status.v1.generated.json",
         &recorder_status,
     );
+    write_fixture(
+        "cli.obs.recorder_overhead.v1.generated.json",
+        &recorder_status["overhead"],
+    );
     let recorder_mark = command_json_vec(
         temp.path(),
         vec![
@@ -42,6 +46,7 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.recorder_marker_result.v1.generated.json",
         &recorder_mark,
     );
+    assert_no_temp_path("recorder marker result", &recorder_mark, temp.path());
     let marker = adc_core::marker_at_received_time(
         "marker-contract-cli",
         "operator",
@@ -94,6 +99,11 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.recorder_incident_resolution.v1.generated.json",
         &recorder_incident,
     );
+    assert_no_temp_path(
+        "recorder incident resolution",
+        &recorder_incident,
+        temp.path(),
+    );
     write_fixture(
         "cli.obs.recorder_incident.v1.generated.json",
         &recorder_incident["incident"],
@@ -105,6 +115,41 @@ fn generated_cli_outputs_validate_against_public_contracts() {
     write_fixture(
         "cli.obs.loss_report.v1.generated.json",
         &recorder_incident["frozen_window"]["loss_report"],
+    );
+    let recorder_loss_ref = command_json(
+        temp.path(),
+        [
+            "investigate",
+            "ref",
+            "--ref",
+            "artifact://recorder/incidents/INC-marker-contract-cli/loss_report.json",
+            "--limit",
+            "20",
+        ],
+    );
+    write_fixture(
+        "cli.obs.ref_resolution.recorder_loss_report.v1.generated.json",
+        &recorder_loss_ref,
+    );
+    write_fixture(
+        "cli.obs.artifact_trust.recorder_loss_report.v1.generated.json",
+        &recorder_loss_ref["artifact_trust"],
+    );
+    let recorder_samples_ref = command_json(
+        temp.path(),
+        [
+            "investigate",
+            "ref",
+            "--ref",
+            "artifact://recorder/incidents/INC-marker-contract-cli/samples.jsonl",
+            "--limit",
+            "1",
+        ],
+    );
+    assert_eq!(recorder_samples_ref["returned_lines"], 1);
+    write_fixture(
+        "cli.obs.ref_resolution.recorder_samples.v1.generated.json",
+        &recorder_samples_ref,
     );
     let recorder_trigger_incident = command_json(
         temp.path(),
@@ -347,4 +392,13 @@ fn write_fixture(name: &str, value: &Value) {
     let path = dir.join(name);
     let bytes = serde_json::to_vec_pretty(value).expect("fixture json");
     fs::write(path, bytes).expect("write fixture");
+}
+
+fn assert_no_temp_path(label: &str, value: &Value, temp_path: &Path) {
+    let rendered = serde_json::to_string(value).expect("serialize generated fixture");
+    let temp_path = temp_path.to_string_lossy();
+    assert!(
+        !rendered.contains(temp_path.as_ref()),
+        "{label} leaked local temp artifact root"
+    );
 }

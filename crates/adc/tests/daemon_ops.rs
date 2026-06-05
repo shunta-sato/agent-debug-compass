@@ -76,6 +76,45 @@ fn arm_disarm_capture_and_evidence_get_use_persistent_state() {
 }
 
 #[test]
+fn recorder_mark_returns_artifact_ref_not_local_path() {
+    let temp = tempfile::tempdir().expect("tempdir");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc"))
+        .args([
+            "recorder",
+            "mark",
+            "--symptom",
+            "camera frame drop",
+            "--marker-id",
+            "marker-ref-test",
+            "--format",
+            "json",
+        ])
+        .env("ADC_HOME", temp.path())
+        .output()
+        .expect("run recorder mark");
+    assert!(
+        output.status.success(),
+        "recorder mark failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let response: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("marker result json");
+    let pending_ref = response["pending_marker_ref"]
+        .as_str()
+        .expect("pending marker ref");
+    assert_eq!(
+        pending_ref,
+        "artifact://recorder/markers/pending/marker-ref-test.json"
+    );
+    assert!(
+        !pending_ref.contains(temp.path().to_string_lossy().as_ref()),
+        "pending marker ref must not expose local artifact root"
+    );
+}
+
+#[test]
 fn recorder_incident_get_rejects_traversal_and_reads_trigger_incidents() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut ring = adc_core::RecorderRing::new("local", 4, 60_000);
@@ -136,6 +175,26 @@ fn recorder_incident_get_rejects_traversal_and_reads_trigger_incidents() {
     assert_eq!(
         response["trigger_event"]["schema_version"],
         "obs.recorder_trigger_event.v1"
+    );
+    assert!(
+        response.get("incident_dir").is_none(),
+        "default recorder incident resolution must not expose local paths"
+    );
+    assert_eq!(
+        response["incident_ref"],
+        "artifact://recorder/incidents/INC-TRIGGER-safe/incident.json"
+    );
+    assert_eq!(
+        response["frozen_window_ref"],
+        "artifact://recorder/incidents/INC-TRIGGER-safe/frozen_window.json"
+    );
+    assert_eq!(
+        response["loss_report_ref"],
+        "artifact://recorder/incidents/INC-TRIGGER-safe/loss_report.json"
+    );
+    assert_eq!(
+        response["samples_ref"],
+        "artifact://recorder/incidents/INC-TRIGGER-safe/samples.jsonl"
     );
 }
 

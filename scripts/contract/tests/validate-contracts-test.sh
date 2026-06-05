@@ -369,6 +369,45 @@ assert_fails_with "trigger preservation reason must not promote root-cause claim
     --schema-dir "${REPO_ROOT}/schemas" \
     --fixture-dir "${TMP_DIR}/invalid-frozen-window-trigger-name"
 
+mkdir -p "${TMP_DIR}/invalid-recorder-ref-segment"
+cp "${REPO_ROOT}/tests/golden/obs.recorder_incident_resolution.v1.min.json" \
+  "${TMP_DIR}/invalid-recorder-ref-segment/obs.recorder_incident_resolution.v1.min.json"
+python3 - "${TMP_DIR}/invalid-recorder-ref-segment/obs.recorder_incident_resolution.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["incident_ref"] = "artifact://recorder/incidents/../incident.json"
+value["loss_report_ref"] = "artifact://recorder/incidents/./loss_report.json"
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "does not match" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-recorder-ref-segment"
+
+mkdir -p "${TMP_DIR}/invalid-recorder-marker-ref-segment"
+cp "${REPO_ROOT}/tests/golden/obs.recorder_marker_result.v1.min.json" \
+  "${TMP_DIR}/invalid-recorder-marker-ref-segment/obs.recorder_marker_result.v1.min.json"
+python3 - "${TMP_DIR}/invalid-recorder-marker-ref-segment/obs.recorder_marker_result.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["pending_marker_ref"] = "artifact://recorder/markers/pending/../marker.json"
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "is not valid under any of the given schemas" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-recorder-marker-ref-segment"
+
 mkdir -p "${TMP_DIR}/invalid-marker-time-confidence"
 cp "${REPO_ROOT}/tests/golden/obs.recorder_marker.v1.min.json" \
   "${TMP_DIR}/invalid-marker-time-confidence/obs.recorder_marker.v1.min.json"

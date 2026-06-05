@@ -108,17 +108,47 @@ pub struct RecorderBudget {
     pub data_quality: DataQuality,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderOverheadScope {
+    ServiceRun,
+    CurrentStatusSnapshot,
+    Incident,
+    ArtifactRootTotal,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecorderOverhead {
     pub schema_version: String,
     pub target_id: String,
+    pub overhead_scope: RecorderOverheadScope,
+    pub since_mono_ns: Option<u64>,
+    pub through_mono_ns: Option<u64>,
     pub cpu_percent: Option<f64>,
     pub memory_bytes: Option<u64>,
     pub disk_write_bytes: u64,
     pub artifact_bytes: u64,
+    pub status_write_bytes: u64,
+    pub frozen_artifact_bytes: u64,
+    pub samples_jsonl_bytes: u64,
+    pub incident_count: u64,
+    pub estimated_memory_ring_bytes: u64,
     pub wakeup_rate_hz: Option<f64>,
     pub self_samples_dropped: u64,
     pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecorderOverheadAccounting {
+    pub overhead_scope: RecorderOverheadScope,
+    pub since_mono_ns: Option<u64>,
+    pub through_mono_ns: Option<u64>,
+    pub disk_write_bytes: u64,
+    pub artifact_bytes: u64,
+    pub status_write_bytes: u64,
+    pub frozen_artifact_bytes: u64,
+    pub samples_jsonl_bytes: u64,
+    pub incident_count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,6 +344,26 @@ pub fn recorder_pending_marker_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
 
 pub fn recorder_marker_result_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
     artifact_root.as_ref().join("recorder/markers/results")
+}
+
+pub fn recorder_pending_marker_ref(marker_id: &str) -> AdcResult<String> {
+    validate_recorder_file_segment(marker_id, "marker_id")?;
+    Ok(format!(
+        "artifact://recorder/markers/pending/{marker_id}.json"
+    ))
+}
+
+pub fn recorder_incident_artifact_ref(incident_id: &str, artifact_name: &str) -> AdcResult<String> {
+    validate_recorder_file_segment(incident_id, "incident_id")?;
+    match artifact_name {
+        "incident.json" | "frozen_window.json" | "loss_report.json" | "samples.jsonl"
+        | "marker.json" | "trigger_event.json" => Ok(format!(
+            "artifact://recorder/incidents/{incident_id}/{artifact_name}"
+        )),
+        _ => Err(AdcError::Artifact(format!(
+            "unsupported recorder incident artifact {artifact_name}"
+        ))),
+    }
 }
 
 pub fn write_recorder_marker_result(
@@ -1206,6 +1256,29 @@ pub fn recorder_status_for(
 ) -> RecorderStatus {
     let target_id = target_id.into();
     let dropped = buffer_status.data_quality.drop_count;
+    let overhead = default_recorder_overhead(&target_id, &buffer_status, dropped);
+    recorder_status_for_with_overhead(
+        target_id,
+        active_profile,
+        previous_state,
+        recorder_state,
+        buffer_status,
+        budget,
+        overhead,
+    )
+}
+
+pub fn recorder_status_for_with_overhead(
+    target_id: impl Into<String>,
+    active_profile: Option<&str>,
+    previous_state: Option<&str>,
+    recorder_state: &str,
+    buffer_status: RecorderBufferStatus,
+    budget: RecorderBudget,
+    overhead: RecorderOverhead,
+) -> RecorderStatus {
+    let target_id = target_id.into();
+    let dropped = buffer_status.data_quality.drop_count;
     RecorderStatus {
         schema_version: "obs.recorder_status.v1".to_string(),
         target_id: target_id.clone(),
@@ -1222,19 +1295,73 @@ pub fn recorder_status_for(
         },
         buffer_status,
         budget,
-        overhead: RecorderOverhead {
-            schema_version: "obs.recorder_overhead.v1".to_string(),
-            target_id,
-            cpu_percent: None,
-            memory_bytes: None,
-            disk_write_bytes: 0,
-            artifact_bytes: 0,
-            wakeup_rate_hz: None,
-            self_samples_dropped: dropped,
-            data_quality: data_quality_for_drop_count(dropped),
-        },
+        overhead,
         data_quality: data_quality_for_drop_count(dropped),
     }
+}
+
+pub fn recorder_overhead_for_service_run(
+    target_id: impl Into<String>,
+    buffer_status: &RecorderBufferStatus,
+    accounting: RecorderOverheadAccounting,
+) -> RecorderOverhead {
+    let target_id = target_id.into();
+    let dropped = buffer_status.data_quality.drop_count;
+    RecorderOverhead {
+        schema_version: "obs.recorder_overhead.v1".to_string(),
+        target_id,
+        overhead_scope: accounting.overhead_scope,
+        since_mono_ns: accounting.since_mono_ns,
+        through_mono_ns: accounting.through_mono_ns,
+        cpu_percent: None,
+        memory_bytes: None,
+        disk_write_bytes: accounting.disk_write_bytes,
+        artifact_bytes: accounting.artifact_bytes,
+        status_write_bytes: accounting.status_write_bytes,
+        frozen_artifact_bytes: accounting.frozen_artifact_bytes,
+        samples_jsonl_bytes: accounting.samples_jsonl_bytes,
+        incident_count: accounting.incident_count,
+        estimated_memory_ring_bytes: estimated_recorder_memory_bytes(buffer_status),
+        wakeup_rate_hz: None,
+        self_samples_dropped: dropped,
+        data_quality: recorder_overhead_data_quality(dropped),
+    }
+}
+
+fn default_recorder_overhead(
+    target_id: &str,
+    buffer_status: &RecorderBufferStatus,
+    self_samples_dropped: u64,
+) -> RecorderOverhead {
+    RecorderOverhead {
+        schema_version: "obs.recorder_overhead.v1".to_string(),
+        target_id: target_id.to_string(),
+        overhead_scope: RecorderOverheadScope::CurrentStatusSnapshot,
+        since_mono_ns: buffer_status.current_retained_range_mono_ns.start,
+        through_mono_ns: buffer_status.current_retained_range_mono_ns.end,
+        cpu_percent: None,
+        memory_bytes: None,
+        disk_write_bytes: 0,
+        artifact_bytes: 0,
+        status_write_bytes: 0,
+        frozen_artifact_bytes: 0,
+        samples_jsonl_bytes: 0,
+        incident_count: 0,
+        estimated_memory_ring_bytes: estimated_recorder_memory_bytes(buffer_status),
+        wakeup_rate_hz: None,
+        self_samples_dropped,
+        data_quality: recorder_overhead_data_quality(self_samples_dropped),
+    }
+}
+
+fn estimated_recorder_memory_bytes(buffer_status: &RecorderBufferStatus) -> u64 {
+    const ESTIMATED_SAMPLE_BYTES: u64 = 256;
+    let retained_samples = buffer_status
+        .signals
+        .iter()
+        .map(|signal| signal.recorded_samples)
+        .sum::<u64>();
+    retained_samples.saturating_mul(ESTIMATED_SAMPLE_BYTES)
 }
 
 fn medium_quality() -> DataQuality {
@@ -1253,5 +1380,27 @@ fn data_quality_for_drop_count(drop_count: u64) -> DataQuality {
             .notes
             .push("memory ring dropped oldest samples".to_string());
     }
+    data_quality
+}
+
+fn recorder_overhead_data_quality(drop_count: u64) -> DataQuality {
+    let mut data_quality = data_quality_for_drop_count(drop_count);
+    data_quality
+        .missing
+        .push("recorder CPU and memory overhead are not measured in this MVP".to_string());
+    data_quality.notes.push(
+        "disk_write_bytes and status_write_bytes are cumulative for the service-run scope"
+            .to_string(),
+    );
+    data_quality.notes.push(
+        "artifact_bytes is a write-path retained-size estimate and may overcount overwritten marker/status artifacts in this MVP"
+            .to_string(),
+    );
+    data_quality
+        .notes
+        .push("status_write_bytes excludes the current status artifact write".to_string());
+    data_quality
+        .notes
+        .push("estimated_memory_ring_bytes uses a fixed per-sample estimate".to_string());
     data_quality
 }

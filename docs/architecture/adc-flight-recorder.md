@@ -740,6 +740,9 @@ the daemon control surface. `adc recorder mark` queues a marker for
 `adc-targetd`; the daemon freezes the retained memory-ring window into a bounded
 incident bundle. `adc recorder incident get` reads a materialized incident, and
 `adc recorder export-dataset` emits a local benchmark/regression manifest.
+Incident resolution returns `artifact://recorder/...` refs by default. Those refs
+are opened through bounded ADC ref resolution with artifact trust and
+data_quality; local filesystem paths are not the default Agent-facing locator.
 
 Planned commands:
 

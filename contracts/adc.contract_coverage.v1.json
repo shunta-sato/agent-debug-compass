@@ -30,7 +30,10 @@
       "contract": "obs.artifact_trust.v1",
       "schema": "schemas/obs.artifact_trust.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.artifact_trust.v1.min.json"],
-      "generated_cli": ["target/contract-fixtures/cli.obs.artifact_trust.v1.generated.json"],
+      "generated_cli": [
+        "target/contract-fixtures/cli.obs.artifact_trust.v1.generated.json",
+        "target/contract-fixtures/cli.obs.artifact_trust.recorder_loss_report.v1.generated.json"
+      ],
       "generated_mcp": ["target/contract-fixtures/mcp.obs.artifact_trust.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
@@ -41,7 +44,11 @@
       "contract": "obs.ref_resolution.v1",
       "schema": "schemas/obs.ref_resolution.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.ref_resolution.v1.min.json"],
-      "generated_cli": ["target/contract-fixtures/cli.obs.ref_resolution.v1.generated.json"],
+      "generated_cli": [
+        "target/contract-fixtures/cli.obs.ref_resolution.v1.generated.json",
+        "target/contract-fixtures/cli.obs.ref_resolution.recorder_loss_report.v1.generated.json",
+        "target/contract-fixtures/cli.obs.ref_resolution.recorder_samples.v1.generated.json"
+      ],
       "generated_mcp": ["target/contract-fixtures/mcp.obs.ref_resolution.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
@@ -139,7 +146,8 @@
       "contract": "obs.recorder_overhead.v1",
       "schema": "schemas/obs.recorder_overhead.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.recorder_overhead.v1.min.json"],
-      "coverage_levels": ["static"]
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_overhead.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli"]
     },
     {
       "contract": "obs.dataset_manifest.v1",
