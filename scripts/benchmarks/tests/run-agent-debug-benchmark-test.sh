@@ -30,5 +30,7 @@ fr = report["flight_recorder_metrics"]
 assert fr["scenario_count"] >= 1
 assert fr["flight_recorder_pre_window_available_count"] > fr["direct_shell_pre_window_available_count"]
 assert fr["evidence_advantage_count"] >= 1
+assert fr["observation_coverage_present_count"] >= 1
+assert fr["missing_evidence_distinguished_count"] >= 1
 assert fr["overhead_budget_violation_count"] == 0
 PY

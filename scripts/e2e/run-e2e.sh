@@ -59,7 +59,9 @@ assert_v2_run_layout() {
   local expected
   actual="$(mktemp)"
   expected="$(mktemp)"
-  find "$ADC_STATE_ROOT/runs/$run_id" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort >"$actual"
+  find "$ADC_STATE_ROOT/runs/$run_id" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+    | grep -v '^recorder_freeze_decision\.json$' \
+    | sort >"$actual"
   cat >"$expected" <<'TXT'
 evidence_index.yaml
 manifest.json
