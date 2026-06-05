@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_budget_status.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "budget_id",
+    "incident_count_scope",
+    "admission_decision",
+    "admission_refusal_reason",
+    "max_frozen_incidents",
+    "existing_frozen_incidents",
+    "frozen_incidents_this_run",
+    "remaining_frozen_incidents",
+    "current_run_included_in_existing",
+    "max_disk_bytes",
+    "retained_artifact_bytes_estimate",
+    "retained_artifact_bytes_estimate_scope",
+    "inventory_truncated",
+    "malformed_entry_count",
+    "unreadable_entry_count",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_budget_status.v1"]},
+    "budget_id": {"type": "string", "minLength": 1},
+    "incident_count_scope": {"type": "string", "enum": ["artifact_root"]},
+    "admission_decision": {"type": "string", "enum": ["accept", "refuse", "unknown_fail_closed"]},
+    "admission_refusal_reason": {
+      "anyOf": [
+        {"type": "string", "enum": ["max_frozen_incidents_exceeded", "incident_inventory_unreadable", "incident_inventory_unreliable"]},
+        {"type": "null"}
+      ]
+    },
+    "max_frozen_incidents": {"type": "integer", "minimum": 1},
+    "existing_frozen_incidents": {"type": "integer", "minimum": 0},
+    "frozen_incidents_this_run": {"type": "integer", "minimum": 0},
+    "remaining_frozen_incidents": {"type": "integer", "minimum": 0},
+    "current_run_included_in_existing": {"type": "boolean"},
+    "max_disk_bytes": {"type": "integer", "minimum": 0},
+    "retained_artifact_bytes_estimate": {"type": "integer", "minimum": 0},
+    "retained_artifact_bytes_estimate_scope": {"type": "string", "enum": ["counted_incidents_only", "full_inventory", "unknown"]},
+    "inventory_truncated": {"type": "boolean"},
+    "malformed_entry_count": {"type": "integer", "minimum": 0},
+    "unreadable_entry_count": {"type": "integer", "minimum": 0},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

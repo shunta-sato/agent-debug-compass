@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_freeze_decision.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "decision",
+    "reason",
+    "budget_status",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_freeze_decision.v1"]},
+    "source": {"type": "string", "enum": ["trigger_policy"]},
+    "decision": {"type": "string", "enum": ["refused"]},
+    "reason": {"type": "string", "enum": ["max_frozen_incidents_exceeded", "incident_inventory_unreadable", "incident_inventory_unreliable"]},
+    "budget_status": {"$ref": "obs.recorder_budget_status.v1.schema.json"},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

@@ -371,6 +371,10 @@ As of 2026-06-04 on the Flight Recorder implementation branch:
 - PR9 dataset readiness is implemented for local benchmark/regression dataset
   manifests. Public sharing datasets, label lifecycle events, and MCP recorder
   tools remain future work.
+- PR6 follow-up budget hardening treats `max_frozen_incidents` as
+  artifact-root scoped, exposes `obs.recorder_budget_status.v1`, and refuses new
+  recorder freezes when already materialized incidents exhaust the budget. It
+  does not delete old incidents.
 
 ### PR4: Flight Recorder Architecture and Contracts
 

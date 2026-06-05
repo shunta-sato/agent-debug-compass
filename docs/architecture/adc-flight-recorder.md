@@ -630,6 +630,21 @@ refuse_freeze
 partial_freeze
 ```
 
+The incident-count budget is artifact-root scoped. `max_frozen_incidents` is
+enforced against valid materialized incident bundles under
+`recorder/incidents/`, not only against the current daemon process memory. This
+prevents daemon restart from resetting the admission budget.
+
+`existing_frozen_incidents` includes current-run incidents once they have been
+materialized. `frozen_incidents_this_run` is informational and must not be added
+again for admission decisions.
+
+When incident inventory is malformed, unreadable, or symlinked, ADC fails closed
+for freeze admission and reports the uncertainty through
+`obs.recorder_budget_status.v1` and `data_quality`. PR6 does not delete old
+incidents; budget exhaustion refuses new freezes until a future explicit
+retention policy exists.
+
 Budget exceedance is Agent-facing state, not an internal log line.
 
 ## Loss Report

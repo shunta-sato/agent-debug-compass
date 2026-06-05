@@ -2,9 +2,11 @@ use std::time::Duration;
 
 use adc_core::{
     arm_profile, default_recorder_budget, freeze_recorder_marker, freeze_recorder_trigger,
-    marker_at_received_time, read_recorder_status_artifact, recorder_ring_capacity_for_budget,
-    recorder_status_for, run_service_for, write_pending_recorder_marker, RecorderRing,
-    RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample, RecorderStatusWriteGovernor,
+    marker_at_received_time, read_recorder_status_artifact, recorder_incident_budget_status,
+    recorder_ring_capacity_for_budget, recorder_status_for, run_service_for,
+    write_pending_recorder_marker, RecorderAdmissionDecision, RecorderAdmissionRefusalReason,
+    RecorderRing, RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample,
+    RecorderStatusWriteGovernor, RetainedArtifactBytesEstimateScope,
 };
 
 #[test]
@@ -190,6 +192,92 @@ fn service_run_status_reports_scoped_recorder_overhead_bytes() {
 }
 
 #[test]
+fn recorder_budget_status_counts_current_run_incidents_without_double_counting() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    materialize_recorder_incident(temp.path(), "INC-current-run-001");
+
+    let status = recorder_incident_budget_status(temp.path(), &default_recorder_budget(), 1);
+
+    assert_eq!(status.existing_frozen_incidents, 1);
+    assert_eq!(status.frozen_incidents_this_run, 1);
+    assert_eq!(
+        status.remaining_frozen_incidents,
+        default_recorder_budget().max_frozen_incidents - 1
+    );
+    assert!(status.current_run_included_in_existing);
+    assert_eq!(status.admission_decision, RecorderAdmissionDecision::Accept);
+}
+
+#[test]
+fn recorder_budget_status_truncates_inventory_after_decision_limit() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let budget = default_recorder_budget();
+    for index in 0..=budget.max_frozen_incidents {
+        materialize_recorder_incident(temp.path(), &format!("INC-budget-{index}"));
+    }
+
+    let status = recorder_incident_budget_status(temp.path(), &budget, 0);
+
+    assert_eq!(
+        status.existing_frozen_incidents,
+        budget.max_frozen_incidents + 1
+    );
+    assert_eq!(status.remaining_frozen_incidents, 0);
+    assert!(status.inventory_truncated);
+    assert_eq!(
+        status.retained_artifact_bytes_estimate_scope,
+        RetainedArtifactBytesEstimateScope::CountedIncidentsOnly
+    );
+    assert_eq!(status.admission_decision, RecorderAdmissionDecision::Refuse);
+    assert_eq!(
+        status.admission_refusal_reason,
+        Some(RecorderAdmissionRefusalReason::MaxFrozenIncidentsExceeded)
+    );
+}
+
+#[test]
+fn recorder_budget_status_fails_closed_for_malformed_incident_inventory() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let incident_dir = temp.path().join("recorder/incidents/INC-malformed");
+    std::fs::create_dir_all(&incident_dir).expect("incident dir");
+    std::fs::write(incident_dir.join("incident.json"), "{not-json").expect("malformed incident");
+
+    let status = recorder_incident_budget_status(temp.path(), &default_recorder_budget(), 0);
+
+    assert_eq!(
+        status.admission_decision,
+        RecorderAdmissionDecision::UnknownFailClosed
+    );
+    assert_eq!(
+        status.admission_refusal_reason,
+        Some(RecorderAdmissionRefusalReason::IncidentInventoryUnreliable)
+    );
+    assert_eq!(status.malformed_entry_count, 1);
+    assert!(status.data_quality.throttled);
+}
+
+#[cfg(unix)]
+#[test]
+fn recorder_budget_status_does_not_follow_symlinked_incident_entries() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let incidents_dir = temp.path().join("recorder/incidents");
+    std::fs::create_dir_all(&incidents_dir).expect("incidents dir");
+    let outside = temp.path().join("outside");
+    std::fs::create_dir_all(&outside).expect("outside dir");
+    std::os::unix::fs::symlink(&outside, incidents_dir.join("INC-symlink"))
+        .expect("symlink incident dir");
+
+    let status = recorder_incident_budget_status(temp.path(), &default_recorder_budget(), 0);
+
+    assert_eq!(status.existing_frozen_incidents, 0);
+    assert_eq!(
+        status.admission_decision,
+        RecorderAdmissionDecision::UnknownFailClosed
+    );
+    assert_eq!(status.malformed_entry_count, 1);
+}
+
+#[test]
 fn marker_freeze_materializes_bounded_incident_bundle_with_loss_report() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut ring = RecorderRing::new("local", 2, 60_000);
@@ -347,4 +435,24 @@ fn sample(time_mono_ns: u64, signal_id: &str, value: f64) -> RecorderSample {
             value,
         }],
     }
+}
+
+fn materialize_recorder_incident(artifact_root: &std::path::Path, incident_id: &str) {
+    let mut ring = RecorderRing::new("local", 2, 60_000);
+    ring.push(sample(1_000, "memory.summary", 42.0));
+    let marker = marker_at_received_time(
+        format!("marker-{incident_id}"),
+        "operator",
+        "existing retained incident",
+        1_000,
+    );
+    freeze_recorder_marker(
+        artifact_root,
+        incident_id,
+        &format!("win-{incident_id}"),
+        &marker,
+        &ring,
+        &default_recorder_budget(),
+    )
+    .expect("materialize recorder incident");
 }

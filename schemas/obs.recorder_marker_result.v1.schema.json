@@ -11,6 +11,7 @@
     "pending_marker_ref",
     "incident_ref",
     "expected_incident_id",
+    "budget_status",
     "data_quality"
   ],
   "properties": {
@@ -31,6 +32,12 @@
       ]
     },
     "expected_incident_id": {"type": "string", "minLength": 1},
+    "budget_status": {
+      "anyOf": [
+        {"$ref": "obs.recorder_budget_status.v1.schema.json"},
+        {"type": "null"}
+      ]
+    },
     "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }
