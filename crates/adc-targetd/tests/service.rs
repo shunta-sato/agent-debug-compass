@@ -262,6 +262,162 @@ triggers: []
     assert_eq!(refused_result["data_quality"]["throttled"], true);
 }
 
+#[test]
+fn service_for_ms_counts_existing_incidents_when_enforcing_recorder_budget() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("recorder_memory.yaml"),
+        r#"
+profile: recorder_memory
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    materialize_existing_recorder_incidents(temp.path());
+    adc_core::arm_profile(temp.path(), "recorder_memory").expect("arm profile");
+    let marker = adc_core::marker_at_received_time(
+        "marker-after-restart-budget-full",
+        "operator",
+        "frame drop after targetd restart",
+        1_000,
+    );
+    adc_core::write_pending_recorder_marker(temp.path(), &marker).expect("pending marker");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "80"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    assert_eq!(
+        summary["frozen_incidents"]
+            .as_array()
+            .expect("frozen incidents")
+            .len(),
+        0,
+        "existing persistent incidents should exhaust the budget"
+    );
+    assert_eq!(summary["data_quality"]["throttled"], true);
+    let refused_result: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/markers/results/marker-after-restart-budget-full.json"),
+        )
+        .expect("refused marker result"),
+    )
+    .expect("marker result json");
+    assert_eq!(refused_result["status"], "refused");
+    assert_eq!(refused_result["reason"], "max_frozen_incidents_exceeded");
+    assert_eq!(
+        refused_result["budget_status"]["incident_count_scope"],
+        "artifact_root"
+    );
+    assert_eq!(
+        refused_result["budget_status"]["existing_frozen_incidents"].as_u64(),
+        Some(adc_core::default_recorder_budget().max_frozen_incidents)
+    );
+    assert_eq!(
+        refused_result["budget_status"]["remaining_frozen_incidents"].as_u64(),
+        Some(0)
+    );
+}
+
+#[test]
+fn service_for_ms_records_trigger_freeze_skip_when_persistent_budget_is_exhausted() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("e2e_kmsg.yaml"),
+        r#"
+profile: e2e_kmsg
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [kmsg]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers:
+  - name: kmsg_warning_pattern
+    type: kmsg_pattern
+    severity_at_least: warning
+    patterns: [warning, timeout]
+"#,
+    )
+    .expect("profile");
+    let kmsg_fixture = temp.path().join("kmsg.log");
+    fs::write(&kmsg_fixture, "warning: synthetic timeout observed\n").expect("kmsg fixture");
+    materialize_existing_recorder_incidents(temp.path());
+    adc_core::arm_profile(temp.path(), "e2e_kmsg").expect("arm profile");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "80"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .env("ADC_KMSG_FIXTURE", &kmsg_fixture)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    let run_id = summary["captured_runs"][0]
+        .as_str()
+        .expect("captured run id");
+    assert_eq!(
+        summary["frozen_incidents"]
+            .as_array()
+            .expect("frozen incidents")
+            .len(),
+        0
+    );
+    let decision: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("runs")
+                .join(run_id)
+                .join("recorder_freeze_decision.json"),
+        )
+        .expect("freeze decision"),
+    )
+    .expect("freeze decision json");
+    assert_eq!(
+        decision["schema_version"],
+        "obs.recorder_freeze_decision.v1"
+    );
+    assert_eq!(decision["source"], "trigger_policy");
+    assert_eq!(decision["decision"], "refused");
+    assert_eq!(decision["reason"], "max_frozen_incidents_exceeded");
+    assert_eq!(
+        decision["budget_status"]["incident_count_scope"],
+        "artifact_root"
+    );
+}
+
 fn assert_v2_top_level_layout(run_dir: &Path) {
     let mut entries = fs::read_dir(run_dir)
         .expect("run dir")
@@ -285,4 +441,32 @@ fn assert_v2_top_level_layout(run_dir: &Path) {
             "windows",
         ]
     );
+}
+
+fn materialize_existing_recorder_incidents(artifact_root: &Path) {
+    let mut ring = adc_core::RecorderRing::new("local", 2, 60_000);
+    ring.push(adc_core::RecorderSample {
+        time_mono_ns: 1_000,
+        signals: vec![adc_core::RecorderSignalSample {
+            signal_id: "memory.summary".to_string(),
+            value: 42.0,
+        }],
+    });
+    for index in 0..adc_core::default_recorder_budget().max_frozen_incidents {
+        let marker = adc_core::marker_at_received_time(
+            format!("existing-marker-{index}"),
+            "operator",
+            "existing retained incident",
+            1_000 + index,
+        );
+        adc_core::freeze_recorder_marker(
+            artifact_root,
+            &format!("INC-existing-{index}"),
+            &format!("win-existing-{index}"),
+            &marker,
+            &ring,
+            &adc_core::default_recorder_budget(),
+        )
+        .expect("materialize existing incident");
+    }
 }

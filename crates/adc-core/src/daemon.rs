@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    env, fs,
+    env,
+    fs::{self, OpenOptions},
     path::{Path, PathBuf},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -15,14 +16,16 @@ use crate::{
     default_recorder_budget, default_target_id, drain_pending_recorder_markers, evaluate_trigger,
     freeze_recorder_marker, freeze_recorder_trigger, parse_meminfo, parse_net_dev, parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
-    recorder_marker_result_for_frozen, recorder_marker_result_for_refused,
+    recorder_freeze_decision_for_refused_trigger, recorder_incident_budget_status,
+    recorder_marker_result_for_frozen, recorder_marker_result_for_refused_with_budget_status,
     recorder_overhead_for_service_run, recorder_ring_capacity_for_budget,
-    recorder_status_for_with_overhead, snapshot, write_evidence_index,
-    write_recorder_marker_result, write_recorder_status_artifact, AdcError, AdcResult,
-    ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
-    OverheadSample, Profile, RecorderOverheadAccounting, RecorderOverheadScope, RecorderRing,
-    RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample, RecorderStatusWriteGovernor,
-    TimeRangeNs, TriggerEvaluation, TriggerInput,
+    recorder_status_from_input, snapshot, write_evidence_index, write_recorder_marker_result,
+    write_recorder_status_artifact, AdcError, AdcResult, ArtifactManifest, ClockSource,
+    DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget, OverheadSample, Profile,
+    RecorderAdmissionDecision, RecorderBudgetStatus, RecorderOverheadAccounting,
+    RecorderOverheadScope, RecorderRing, RecorderSample, RecorderSampleRateGovernor,
+    RecorderSignalSample, RecorderStatusInput, RecorderStatusWriteGovernor, TimeRangeNs,
+    TriggerEvaluation, TriggerInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,15 +292,18 @@ pub fn run_service_for(
         }
         for marker in drain_pending_recorder_markers(artifact_root)? {
             let incident_id = format!("INC-{}", marker.marker_id);
-            if recorder_freeze_budget_exhausted(
-                frozen_incidents.len(),
+            let _admission_lock = acquire_recorder_admission_lock(artifact_root)?;
+            let budget_status = recorder_incident_budget_status(
+                artifact_root,
                 &recorder_budget,
-                &mut summary_quality,
-            ) {
-                let result = recorder_marker_result_for_refused(
+                frozen_incidents.len() as u64,
+            );
+            if recorder_freeze_budget_exhausted(&budget_status, &mut summary_quality) {
+                let result = recorder_marker_result_for_refused_with_budget_status(
                     marker,
                     incident_id,
                     "max_frozen_incidents_exceeded",
+                    budget_status,
                 );
                 let result_path = write_recorder_marker_result(artifact_root, &result)?;
                 recorder_accounting.record_marker_result_write(file_len(&result_path)?);
@@ -337,11 +343,13 @@ pub fn run_service_for(
             let run_id = next_daemon_run_id();
             create_trigger_bundle(artifact_root, &run_id, &profile, &sample, &matched)?;
             let incident_id = format!("INC-TRIGGER-{}", sample.time_mono_ns);
-            if !recorder_freeze_budget_exhausted(
-                frozen_incidents.len(),
+            let _admission_lock = acquire_recorder_admission_lock(artifact_root)?;
+            let budget_status = recorder_incident_budget_status(
+                artifact_root,
                 &recorder_budget,
-                &mut summary_quality,
-            ) {
+                frozen_incidents.len() as u64,
+            );
+            if !recorder_freeze_budget_exhausted(&budget_status, &mut summary_quality) {
                 let freeze = freeze_recorder_trigger(
                     artifact_root,
                     &incident_id,
@@ -367,6 +375,15 @@ pub fn run_service_for(
                     )?;
                     recorder_accounting.record_status_write(status_bytes);
                 }
+            } else {
+                let decision = recorder_freeze_decision_for_refused_trigger(budget_status);
+                write_json(
+                    &artifact_root
+                        .join("runs")
+                        .join(&run_id)
+                        .join("recorder_freeze_decision.json"),
+                    &decision,
+                )?;
             }
             record_run(artifact_root, &run_id)?;
             captured_runs.push(run_id);
@@ -424,17 +441,21 @@ fn write_live_recorder_status(
         samples_jsonl_bytes: accounting.samples_jsonl_bytes,
         incident_count: accounting.incident_count,
     };
+    let frozen_incidents_this_run = accounting.incident_count;
     let overhead =
         recorder_overhead_for_service_run(default_target_id(), &buffer_status, accounting);
-    let status = recorder_status_for_with_overhead(
-        default_target_id(),
-        active_profile,
-        previous_state,
-        recorder_state,
+    let budget_status =
+        recorder_incident_budget_status(artifact_root, budget, frozen_incidents_this_run);
+    let status = recorder_status_from_input(RecorderStatusInput {
+        target_id: default_target_id(),
+        active_profile: active_profile.map(str::to_string),
+        previous_state: previous_state.map(str::to_string),
+        recorder_state: recorder_state.to_string(),
         buffer_status,
-        budget.clone(),
+        budget: budget.clone(),
+        budget_status,
         overhead,
-    );
+    });
     let path = write_recorder_status_artifact(artifact_root, &status)?;
     file_len(&path)
 }
@@ -739,22 +760,63 @@ fn recorder_expected_signal_ids(profile: &Profile) -> Vec<String> {
 }
 
 fn recorder_freeze_budget_exhausted(
-    frozen_count: usize,
-    budget: &crate::RecorderBudget,
+    budget_status: &RecorderBudgetStatus,
     data_quality: &mut DataQuality,
 ) -> bool {
-    if frozen_count < budget.max_frozen_incidents as usize {
+    if matches!(
+        budget_status.admission_decision,
+        RecorderAdmissionDecision::Accept
+    ) {
         return false;
     }
     data_quality.throttled = true;
-    let note = format!(
-        "recorder max_frozen_incidents budget reached: {}",
-        budget.max_frozen_incidents
-    );
+    let reason = match budget_status.admission_refusal_reason {
+        Some(crate::RecorderAdmissionRefusalReason::MaxFrozenIncidentsExceeded) => {
+            "max_frozen_incidents_exceeded"
+        }
+        Some(crate::RecorderAdmissionRefusalReason::IncidentInventoryUnreadable) => {
+            "incident_inventory_unreadable"
+        }
+        Some(crate::RecorderAdmissionRefusalReason::IncidentInventoryUnreliable) => {
+            "incident_inventory_unreliable"
+        }
+        None => "unknown",
+    };
+    let note = format!("recorder freeze admission refused: {reason}");
     if !data_quality.notes.iter().any(|existing| existing == &note) {
         data_quality.notes.push(note);
     }
     true
+}
+
+struct RecorderAdmissionLock {
+    path: PathBuf,
+}
+
+impl Drop for RecorderAdmissionLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn acquire_recorder_admission_lock(artifact_root: &Path) -> AdcResult<RecorderAdmissionLock> {
+    let recorder_dir = artifact_root.join("recorder");
+    fs::create_dir_all(&recorder_dir).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to create recorder admission lock directory: {err}"
+        ))
+    })?;
+    let path = recorder_dir.join(".freeze_admission.lock");
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|err| {
+            AdcError::Artifact(format!(
+                "failed to acquire recorder freeze admission lock: {err}"
+            ))
+        })?;
+    Ok(RecorderAdmissionLock { path })
 }
 
 fn create_trigger_bundle(

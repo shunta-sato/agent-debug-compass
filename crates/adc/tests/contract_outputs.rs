@@ -29,6 +29,10 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.recorder_overhead.v1.generated.json",
         &recorder_status["overhead"],
     );
+    write_fixture(
+        "cli.obs.recorder_budget_status.v1.generated.json",
+        &recorder_status["budget_status"],
+    );
     let recorder_mark = command_json_vec(
         temp.path(),
         vec![

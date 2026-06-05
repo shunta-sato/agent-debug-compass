@@ -63,6 +63,13 @@
       "coverage_levels": ["static", "generated_cli", "invariant"]
     },
     {
+      "contract": "obs.recorder_budget_status.v1",
+      "schema": "schemas/obs.recorder_budget_status.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_budget_status.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_budget_status.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli"]
+    },
+    {
       "contract": "obs.recorder_buffer_status.v1",
       "schema": "schemas/obs.recorder_buffer_status.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.recorder_buffer_status.v1.min.json"],
@@ -141,6 +148,12 @@
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
       "coverage_levels": ["static", "generated_cli", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.recorder_freeze_decision.v1",
+      "schema": "schemas/obs.recorder_freeze_decision.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_freeze_decision.v1.min.json"],
+      "coverage_levels": ["static"]
     },
     {
       "contract": "obs.recorder_overhead.v1",

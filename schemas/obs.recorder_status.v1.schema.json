@@ -13,6 +13,7 @@
     "storage",
     "buffer_status",
     "budget",
+    "budget_status",
     "overhead",
     "data_quality"
   ],
@@ -37,6 +38,7 @@
     },
     "buffer_status": {"$ref": "obs.recorder_buffer_status.v1.schema.json"},
     "budget": {"$ref": "obs.recorder_budget.v1.schema.json"},
+    "budget_status": {"$ref": "obs.recorder_budget_status.v1.schema.json"},
     "overhead": {"$ref": "obs.recorder_overhead.v1.schema.json"},
     "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
