@@ -45,6 +45,7 @@ pub enum ContentClass {
     RecorderStatus,
     RecorderIncident,
     RecorderFrozenWindow,
+    RecorderObservationCoverage,
     RecorderMarkerResult,
     LossReport,
     TriggerEvent,
@@ -1014,6 +1015,7 @@ fn trust_level_for_content_class(content_class: ContentClass) -> TrustLevel {
         | ContentClass::RecorderStatus
         | ContentClass::RecorderIncident
         | ContentClass::RecorderFrozenWindow
+        | ContentClass::RecorderObservationCoverage
         | ContentClass::LossReport
         | ContentClass::TriggerEvent
         | ContentClass::DatasetManifest => TrustLevel::TrustedAdcGenerated,

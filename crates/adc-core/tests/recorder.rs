@@ -209,6 +209,139 @@ fn recorder_budget_status_counts_current_run_incidents_without_double_counting()
 }
 
 #[test]
+fn marker_freeze_writes_observation_coverage_for_expected_absent_signals() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut ring = RecorderRing::with_expected_signals(
+        "local",
+        8,
+        60_000,
+        ["memory.summary".to_string(), "thermal.zone".to_string()],
+    );
+    ring.push(sample(1_000, "memory.summary", 42.0));
+    let marker = marker_at_received_time(
+        "marker-coverage",
+        "operator",
+        "camera frame drop observed around now",
+        1_000,
+    );
+
+    freeze_recorder_marker(
+        temp.path(),
+        "INC-coverage",
+        "win-coverage",
+        &marker,
+        &ring,
+        &default_recorder_budget(),
+    )
+    .expect("freeze recorder incident");
+
+    let coverage_path = temp
+        .path()
+        .join("recorder/incidents/INC-coverage/coverage.json");
+    let coverage: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(coverage_path).expect("coverage artifact"))
+            .expect("coverage json");
+    assert_eq!(
+        coverage["schema_version"],
+        "obs.recorder_observation_coverage.v1"
+    );
+    assert_eq!(
+        coverage["loss_report_ref"],
+        "artifact://recorder/incidents/INC-coverage/loss_report.json"
+    );
+    let signals = coverage["signals"].as_array().expect("coverage signals");
+    assert!(signals.iter().any(|signal| {
+        signal["signal_id"] == "memory.summary"
+            && signal["coverage_state"] == "covered"
+            && signal["exported_samples"].as_u64() == Some(1)
+    }));
+    assert!(signals.iter().any(|signal| {
+        signal["signal_id"] == "thermal.zone"
+            && signal["coverage_state"] == "missing"
+            && signal["data_quality"]["missing"]
+                .as_array()
+                .expect("thermal missing")
+                .iter()
+                .any(|item| item.as_str().unwrap_or("").contains("thermal.zone"))
+    }));
+    assert!(
+        signals
+            .iter()
+            .all(|signal| signal["coverage_state"] != "not_expected"),
+        "coverage should not enumerate unrelated global signals as not_expected"
+    );
+    assert!(
+        signals
+            .iter()
+            .all(|signal| signal["signal_id"] != "cpu.summary"),
+        "coverage should include expected profile signals only by default"
+    );
+}
+
+#[test]
+fn marker_freeze_coverage_reports_effective_interval_and_unavailable_signals() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut budget = default_recorder_budget();
+    budget.max_samples_per_second = 16;
+    let memory = adc_core::recorder_expected_signal_for_id("memory.summary", 10);
+    let mut thermal = adc_core::recorder_expected_signal_for_id("thermal.zone", 10);
+    thermal.capability_status = adc_core::CapabilityStatus::Unavailable;
+    thermal
+        .data_quality
+        .missing
+        .push("thermal.zone expected but linux.sysfs.thermal_zone unavailable".to_string());
+    let mut ring = RecorderRing::with_expected_signal_model("local", 8, 60_000, [memory, thermal]);
+    ring.push(sample(1_000, "memory.summary", 42.0));
+    let marker = marker_at_received_time(
+        "marker-effective-interval",
+        "operator",
+        "camera frame drop observed around now",
+        1_000,
+    );
+
+    freeze_recorder_marker(
+        temp.path(),
+        "INC-effective-interval",
+        "win-effective-interval",
+        &marker,
+        &ring,
+        &budget,
+    )
+    .expect("freeze recorder incident");
+
+    let coverage: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(
+            temp.path()
+                .join("recorder/incidents/INC-effective-interval/coverage.json"),
+        )
+        .expect("coverage artifact"),
+    )
+    .expect("coverage json");
+    let signals = coverage["signals"].as_array().expect("coverage signals");
+    let memory_coverage = signals
+        .iter()
+        .find(|signal| signal["signal_id"] == "memory.summary")
+        .expect("memory coverage");
+    assert_eq!(memory_coverage["configured_interval_ms"], 10);
+    assert_eq!(memory_coverage["effective_interval_ms"], 63);
+    assert_eq!(
+        memory_coverage["expected_samples_basis"],
+        "budgeted_recorder_interval"
+    );
+    let thermal_coverage = signals
+        .iter()
+        .find(|signal| signal["signal_id"] == "thermal.zone")
+        .expect("thermal coverage");
+    assert_eq!(thermal_coverage["coverage_state"], "unavailable");
+    assert_eq!(thermal_coverage["capability_status"], "unavailable");
+    assert!(thermal_coverage["loss_reasons"]
+        .as_array()
+        .expect("loss reasons")
+        .iter()
+        .any(|reason| reason == "required_capability_unavailable"));
+}
+
+#[test]
 fn recorder_budget_status_truncates_inventory_after_decision_limit() {
     let temp = tempfile::tempdir().expect("tempdir");
     let budget = default_recorder_budget();
