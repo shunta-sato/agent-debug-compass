@@ -97,11 +97,37 @@ triggers:
         &fs::read(incident_dir.join("frozen_window.json")).expect("frozen window"),
     )
     .expect("frozen window json");
+    let trigger_event: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("trigger_event.json")).expect("trigger event"),
+    )
+    .expect("trigger event json");
+    let trigger_decision: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("trigger_decision.json")).expect("trigger decision"),
+    )
+    .expect("trigger decision json");
     let samples = fs::read_to_string(incident_dir.join("samples.jsonl")).expect("samples");
     assert_eq!(frozen_window["freeze_reason"], "trigger_policy");
     assert_eq!(
         frozen_window["preservation_reason"]["name"],
         "kmsg_warning_pattern"
+    );
+    assert_eq!(
+        trigger_event["trigger_decision_ref"],
+        format!("artifact://recorder/incidents/{incident_id}/trigger_decision.json")
+    );
+    assert_eq!(
+        trigger_event["coverage_ref"],
+        format!("artifact://recorder/incidents/{incident_id}/coverage.json")
+    );
+    assert_eq!(
+        trigger_decision["schema_version"],
+        "obs.trigger_decision.v1"
+    );
+    assert_eq!(trigger_decision["decision"], "fired");
+    assert_eq!(trigger_decision["root_cause_claim"], false);
+    assert_eq!(
+        trigger_decision["trigger_event_ref"],
+        format!("artifact://recorder/incidents/{incident_id}/trigger_event.json")
     );
     assert!(samples.contains("kmsg.cursor"));
 }
@@ -517,6 +543,82 @@ triggers:
         decision["budget_status"]["incident_count_scope"],
         "artifact_root"
     );
+    let trigger_decision: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/trigger-decisions/TD-default-symptom-trigger-policy-kmsg_warning_pattern.json"),
+        )
+        .expect("trigger budget skip decision"),
+    )
+    .expect("trigger decision json");
+    assert_eq!(
+        trigger_decision["schema_version"],
+        "obs.trigger_decision.v1"
+    );
+    assert_eq!(trigger_decision["decision"], "skipped_budget_exhausted");
+    assert_eq!(trigger_decision["decision_reason"], "budget_exhausted");
+    assert_eq!(
+        trigger_decision["budget_decision"],
+        "skipped_budget_exhausted"
+    );
+}
+
+#[test]
+fn service_for_ms_records_trigger_skip_when_required_coverage_is_missing() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("missing_cpu_coverage.yaml"),
+        r#"
+profile: missing_cpu_coverage
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers:
+  - name: cpu_pressure_high
+    type: threshold
+    signal: cpu.total_percent
+    op: ">="
+    value: 85
+"#,
+    )
+    .expect("profile");
+    adc_core::arm_profile(temp.path(), "missing_cpu_coverage").expect("arm profile");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "80"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    assert!(summary["captured_runs"]
+        .as_array()
+        .expect("captured runs")
+        .is_empty());
+    let trigger_decision: serde_json::Value = serde_json::from_slice(
+        &fs::read(temp.path().join(
+            "recorder/trigger-decisions/TD-default-symptom-trigger-policy-cpu_pressure_high.json",
+        ))
+        .expect("trigger coverage skip decision"),
+    )
+    .expect("trigger decision json");
+    assert_eq!(trigger_decision["decision"], "skipped_missing_coverage");
+    assert_eq!(trigger_decision["decision_reason"], "coverage_missing");
+    assert_eq!(trigger_decision["coverage_state"], "missing");
 }
 
 fn assert_v2_top_level_layout(run_dir: &Path) {

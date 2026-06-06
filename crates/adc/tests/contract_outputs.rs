@@ -84,6 +84,101 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         &adc_core::default_recorder_budget(),
     )
     .expect("freeze trigger recorder fixture");
+    let trigger_profile = adc_core::parse_profile(
+        r#"
+profile: contract_trigger_profile
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers:
+  - name: memory_pressure_low
+    type: threshold
+    signal: memory.available_percent
+    op: "<="
+    value: 20
+    cooldown_ms: 30000
+"#,
+    )
+    .expect("trigger policy profile");
+    let trigger_policy =
+        adc_core::trigger_policy_for_profile("default-symptom-trigger-policy", &trigger_profile);
+    write_fixture(
+        "cli.obs.trigger_policy.v1.generated.json",
+        &serde_json::to_value(&trigger_policy).expect("trigger policy json"),
+    );
+    let trigger_rule = trigger_profile
+        .triggers
+        .first()
+        .expect("trigger rule")
+        .clone();
+    let covered = trigger_coverage("memory.summary", adc_core::RecorderCoverageState::Covered);
+    let missing = trigger_coverage("memory.summary", adc_core::RecorderCoverageState::Missing);
+    let trigger_input = adc_core::TriggerInput {
+        signal: "memory.available_percent".to_string(),
+        value: Some(12.5),
+        duration_sec: None,
+        text: None,
+        severity: None,
+    };
+    let skipped_missing = adc_core::trigger_decision_for_rule(
+        "default-symptom-trigger-policy",
+        &trigger_rule,
+        Some(&trigger_input),
+        Some(&missing),
+        None,
+        None,
+    )
+    .expect("skipped missing coverage decision");
+    write_fixture(
+        "cli.obs.trigger_decision.skipped_missing_coverage.v1.generated.json",
+        &serde_json::to_value(&skipped_missing).expect("skipped trigger decision json"),
+    );
+    let mut trigger_state = adc_core::TriggerRuntimeState::default();
+    let _first = adc_core::trigger_decision_with_runtime_state(
+        "default-symptom-trigger-policy",
+        &trigger_rule,
+        Some(&trigger_input),
+        Some(&covered),
+        None,
+        1_000_000_000,
+        &mut trigger_state,
+    )
+    .expect("first trigger decision");
+    let suppressed = adc_core::trigger_decision_with_runtime_state(
+        "default-symptom-trigger-policy",
+        &trigger_rule,
+        Some(&trigger_input),
+        Some(&covered),
+        None,
+        2_000_000_000,
+        &mut trigger_state,
+    )
+    .expect("suppressed trigger decision");
+    write_fixture(
+        "cli.obs.trigger_decision.suppressed_cooldown.v1.generated.json",
+        &serde_json::to_value(&suppressed).expect("suppressed trigger decision json"),
+    );
+    let mut exhausted_budget = adc_core::default_recorder_budget();
+    exhausted_budget.max_frozen_incidents = 0;
+    let exhausted_status = adc_core::recorder_default_budget_status(&exhausted_budget, 0);
+    let skipped_budget = adc_core::trigger_decision_for_budget_refusal(
+        "default-symptom-trigger-policy",
+        &trigger_rule,
+        Some(&trigger_input),
+        Some(&covered),
+        None,
+        &exhausted_status,
+    )
+    .expect("budget skip trigger decision");
+    write_fixture(
+        "cli.obs.trigger_decision.skipped_budget_exhausted.v1.generated.json",
+        &serde_json::to_value(&skipped_budget).expect("budget trigger decision json"),
+    );
     let recorder_incidents = command_json(temp.path(), ["recorder", "incidents"]);
     write_fixture(
         "cli.obs.recorder_incident_list.v1.generated.json",
@@ -199,6 +294,29 @@ fn generated_cli_outputs_validate_against_public_contracts() {
     write_fixture(
         "cli.obs.recorder_trigger_event.v1.generated.json",
         &recorder_trigger_incident["trigger_event"],
+    );
+    write_fixture(
+        "cli.obs.trigger_decision.fired.v1.generated.json",
+        &recorder_trigger_incident["trigger_decision"],
+    );
+    let recorder_trigger_decision_ref = command_json(
+        temp.path(),
+        [
+            "investigate",
+            "ref",
+            "--ref",
+            "artifact://recorder/incidents/INC-TRIGGER-contract-cli/trigger_decision.json",
+            "--limit",
+            "20",
+        ],
+    );
+    write_fixture(
+        "cli.obs.ref_resolution.recorder_trigger_decision.v1.generated.json",
+        &recorder_trigger_decision_ref,
+    );
+    write_fixture(
+        "cli.obs.artifact_trust.recorder_trigger_decision.v1.generated.json",
+        &recorder_trigger_decision_ref["artifact_trust"],
     );
     let dataset_manifest = command_json(
         temp.path(),
@@ -436,4 +554,50 @@ fn assert_no_temp_path(label: &str, value: &Value, temp_path: &Path) {
         !rendered.contains(temp_path.as_ref()),
         "{label} leaked local temp artifact root"
     );
+}
+
+fn trigger_coverage(
+    signal_id: &str,
+    coverage_state: adc_core::RecorderCoverageState,
+) -> adc_core::RecorderSignalCoverage {
+    adc_core::RecorderSignalCoverage {
+        signal_id: signal_id.to_string(),
+        expected: true,
+        coverage_state,
+        coverage_confidence: adc_core::RecorderCoverageConfidence::Medium,
+        configured_interval_ms: 10,
+        effective_interval_ms: 63,
+        expected_samples_configured: Some(7),
+        expected_samples_budgeted: Some(1),
+        expected_samples: Some(1),
+        expected_samples_basis: adc_core::ExpectedSamplesBasis::BudgetedRecorderInterval,
+        retained_samples_before_freeze: if matches!(
+            coverage_state,
+            adc_core::RecorderCoverageState::Missing
+        ) {
+            0
+        } else {
+            1
+        },
+        exported_samples: if matches!(coverage_state, adc_core::RecorderCoverageState::Missing) {
+            0
+        } else {
+            1
+        },
+        dropped_samples: 0,
+        truncated_samples_due_to_freeze_budget: 0,
+        loss_report_ref: "artifact://recorder/incidents/INC-001/loss_report.json".to_string(),
+        loss_collector_id: signal_id.to_string(),
+        loss_reasons: Vec::new(),
+        capability_status: adc_core::CapabilityStatus::Unknown,
+        data_quality: adc_core::DataQuality {
+            clock_confidence: adc_core::ClockConfidence::Medium,
+            missing: if matches!(coverage_state, adc_core::RecorderCoverageState::Missing) {
+                vec![format!("{signal_id} coverage is missing")]
+            } else {
+                Vec::new()
+            },
+            ..Default::default()
+        },
+    }
 }

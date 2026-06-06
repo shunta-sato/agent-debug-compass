@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.trigger_policy.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "policy_scope",
+    "rules",
+    "default_decision",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.trigger_policy.v1"]},
+    "policy_id": {"type": "string", "minLength": 1},
+    "policy_scope": {"type": "string", "enum": ["recorder"]},
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "trigger_name",
+          "trigger_kind",
+          "signal_id",
+          "coverage_signal_id",
+          "operator",
+          "threshold",
+          "delta",
+          "burst_count",
+          "burst_window_ms",
+          "min_coverage_state",
+          "required_signal_state",
+          "cooldown_ms",
+          "hysteresis",
+          "freeze_profile",
+          "root_cause_claim",
+          "data_quality"
+        ],
+        "properties": {
+          "rule_id": {"type": "string", "minLength": 1},
+          "trigger_name": {"type": "string", "minLength": 1},
+          "trigger_kind": {"type": "string", "enum": ["threshold", "delta", "burst_count"]},
+          "signal_id": {"type": "string", "minLength": 1},
+          "coverage_signal_id": {"type": "string", "minLength": 1},
+          "operator": {"type": ["string", "null"], "enum": [">", ">=", "<", "<=", "==", null]},
+          "threshold": {"type": ["number", "null"]},
+          "delta": {"type": ["number", "null"]},
+          "burst_count": {"type": ["integer", "null"], "minimum": 1},
+          "burst_window_ms": {"type": ["integer", "null"], "minimum": 1},
+          "min_coverage_state": {"type": "string", "enum": ["covered", "partial"]},
+          "required_signal_state": {"type": "string", "enum": ["covered", "covered_or_partial"]},
+          "cooldown_ms": {"type": "integer", "minimum": 0},
+          "hysteresis": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["clear_below", "min_clear_duration_ms"],
+            "properties": {
+              "clear_below": {"type": ["number", "null"]},
+              "min_clear_duration_ms": {"type": "integer", "minimum": 0}
+            }
+          },
+          "freeze_profile": {"type": "string", "minLength": 1},
+          "root_cause_claim": {"type": "boolean", "enum": [false]},
+          "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+        }
+      }
+    },
+    "default_decision": {"type": "string", "enum": ["evaluate"]},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

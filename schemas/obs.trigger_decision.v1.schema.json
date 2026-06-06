@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.trigger_decision.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_id",
+    "policy_id",
+    "rule_id",
+    "trigger_name",
+    "trigger_kind",
+    "decision",
+    "decision_reason",
+    "signal_id",
+    "coverage_signal_id",
+    "observed_value",
+    "threshold",
+    "coverage_state",
+    "coverage_confidence",
+    "coverage_ref",
+    "budget_decision",
+    "budget_status_ref",
+    "incident_id",
+    "trigger_event_ref",
+    "root_cause_claim",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.trigger_decision.v1"]},
+    "decision_id": {"type": "string", "minLength": 1},
+    "policy_id": {"type": "string", "minLength": 1},
+    "rule_id": {"type": "string", "minLength": 1},
+    "trigger_name": {"type": "string", "minLength": 1},
+    "trigger_kind": {"type": "string", "enum": ["threshold", "delta", "burst_count"]},
+    "decision": {
+      "type": "string",
+      "enum": [
+        "fired",
+        "not_fired",
+        "suppressed_cooldown",
+        "suppressed_hysteresis",
+        "suppressed_storm",
+        "skipped_missing_coverage",
+        "skipped_budget_exhausted",
+        "skipped_policy_invalid"
+      ]
+    },
+    "decision_reason": {
+      "type": "string",
+      "enum": [
+        "threshold_crossed",
+        "threshold_not_crossed",
+        "delta_crossed",
+        "delta_not_crossed",
+        "burst_count_crossed",
+        "burst_count_not_crossed",
+        "coverage_missing",
+        "coverage_unavailable",
+        "cooldown_active",
+        "hysteresis_not_cleared",
+        "storm_suppressed",
+        "budget_exhausted",
+        "policy_invalid"
+      ]
+    },
+    "signal_id": {"type": "string", "minLength": 1},
+    "coverage_signal_id": {"type": "string", "minLength": 1},
+    "observed_value": {"type": ["number", "null"]},
+    "threshold": {"type": ["number", "null"]},
+    "coverage_state": {"type": "string", "enum": ["covered", "partial", "missing", "unavailable", "not_expected", "degraded", "unknown"]},
+    "coverage_confidence": {"type": "string", "enum": ["unknown", "low", "medium", "high"]},
+    "coverage_ref": {
+      "type": ["string", "null"],
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/coverage\\.json$"
+    },
+    "budget_decision": {"type": "string", "enum": ["accepted", "skipped_budget_exhausted", "not_required", "unknown"]},
+    "budget_status_ref": {"type": ["string", "null"], "minLength": 1},
+    "incident_id": {"type": ["string", "null"], "minLength": 1},
+    "trigger_event_ref": {
+      "type": ["string", "null"],
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/trigger_event\\.json$"
+    },
+    "root_cause_claim": {"type": "boolean", "enum": [false]},
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

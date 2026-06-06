@@ -10,9 +10,11 @@
     "frozen_window_ref",
     "loss_report_ref",
     "coverage_ref",
+    "trigger_decision_ref",
     "samples_ref",
     "marker",
     "trigger_event",
+    "trigger_decision",
     "incident",
     "frozen_window",
     "data_quality"
@@ -24,6 +26,10 @@
     "frozen_window_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/frozen_window\\.json$"},
     "loss_report_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/loss_report\\.json$"},
     "coverage_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/coverage\\.json$"},
+    "trigger_decision_ref": {
+      "type": ["string", "null"],
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/trigger_decision\\.json$"
+    },
     "samples_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/samples\\.jsonl$"},
     "marker": {
       "anyOf": [
@@ -34,6 +40,12 @@
     "trigger_event": {
       "anyOf": [
         {"$ref": "obs.recorder_trigger_event.v1.schema.json"},
+        {"type": "null"}
+      ]
+    },
+    "trigger_decision": {
+      "anyOf": [
+        {"$ref": "obs.trigger_decision.v1.schema.json"},
         {"type": "null"}
       ]
     },

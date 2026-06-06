@@ -7,6 +7,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{AdcError, AdcResult, ClockConfidence, DataQuality};
+use crate::{
+    TriggerBudgetDecision, TriggerDecision, TriggerDecisionOutcome, TriggerDecisionReason,
+    TriggerKind,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -544,6 +548,10 @@ pub fn recorder_marker_result_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
     artifact_root.as_ref().join("recorder/markers/results")
 }
 
+pub fn recorder_trigger_decision_dir(artifact_root: impl AsRef<Path>) -> PathBuf {
+    artifact_root.as_ref().join("recorder/trigger-decisions")
+}
+
 pub fn recorder_pending_marker_ref(marker_id: &str) -> AdcResult<String> {
     validate_recorder_file_segment(marker_id, "marker_id")?;
     Ok(format!(
@@ -551,17 +559,47 @@ pub fn recorder_pending_marker_ref(marker_id: &str) -> AdcResult<String> {
     ))
 }
 
+pub fn recorder_trigger_decision_ref(decision_id: &str) -> AdcResult<String> {
+    validate_recorder_file_segment(decision_id, "decision_id")?;
+    Ok(format!(
+        "artifact://recorder/trigger-decisions/{decision_id}.json"
+    ))
+}
+
 pub fn recorder_incident_artifact_ref(incident_id: &str, artifact_name: &str) -> AdcResult<String> {
     validate_recorder_file_segment(incident_id, "incident_id")?;
     match artifact_name {
-        "incident.json" | "frozen_window.json" | "coverage.json" | "loss_report.json"
-        | "samples.jsonl" | "marker.json" | "trigger_event.json" => Ok(format!(
+        "incident.json"
+        | "frozen_window.json"
+        | "coverage.json"
+        | "loss_report.json"
+        | "samples.jsonl"
+        | "marker.json"
+        | "trigger_event.json"
+        | "trigger_decision.json" => Ok(format!(
             "artifact://recorder/incidents/{incident_id}/{artifact_name}"
         )),
         _ => Err(AdcError::Artifact(format!(
             "unsupported recorder incident artifact {artifact_name}"
         ))),
     }
+}
+
+pub fn write_recorder_trigger_decision(
+    artifact_root: impl AsRef<Path>,
+    decision: &TriggerDecision,
+) -> AdcResult<PathBuf> {
+    validate_recorder_file_segment(&decision.decision_id, "decision_id")?;
+    let decision_dir = recorder_trigger_decision_dir(artifact_root);
+    fs::create_dir_all(&decision_dir).map_err(|err| {
+        AdcError::Artifact(format!(
+            "failed to create recorder trigger decision directory {}: {err}",
+            decision_dir.display()
+        ))
+    })?;
+    let path = decision_dir.join(format!("{}.json", decision.decision_id));
+    write_json(&path, decision)?;
+    Ok(path)
 }
 
 pub fn write_recorder_marker_result(
@@ -1185,6 +1223,39 @@ pub fn freeze_recorder_trigger(
     ring: &RecorderRing,
     budget: &RecorderBudget,
 ) -> AdcResult<RecorderTriggerFreeze> {
+    freeze_recorder_trigger_with_decision(
+        artifact_root,
+        RecorderTriggerFreezeRequest {
+            incident_id,
+            window_id,
+            trigger_name,
+            trigger_time_mono_ns,
+            trigger_decision: None,
+        },
+        ring,
+        budget,
+    )
+}
+
+#[derive(Debug)]
+pub struct RecorderTriggerFreezeRequest<'a> {
+    pub incident_id: &'a str,
+    pub window_id: &'a str,
+    pub trigger_name: &'a str,
+    pub trigger_time_mono_ns: u64,
+    pub trigger_decision: Option<TriggerDecision>,
+}
+
+pub fn freeze_recorder_trigger_with_decision(
+    artifact_root: impl AsRef<Path>,
+    request: RecorderTriggerFreezeRequest<'_>,
+    ring: &RecorderRing,
+    budget: &RecorderBudget,
+) -> AdcResult<RecorderTriggerFreeze> {
+    let incident_id = request.incident_id;
+    let window_id = request.window_id;
+    let trigger_name = request.trigger_name;
+    let trigger_time_mono_ns = request.trigger_time_mono_ns;
     validate_recorder_file_segment(incident_id, "incident_id")?;
     validate_recorder_file_segment(window_id, "window_id")?;
     validate_preservation_reason_name(trigger_name)?;
@@ -1223,6 +1294,10 @@ pub fn freeze_recorder_trigger(
     artifact_refs.insert(
         "trigger_event".to_string(),
         format!("artifact://recorder/incidents/{incident_id}/trigger_event.json"),
+    );
+    artifact_refs.insert(
+        "trigger_decision".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/trigger_decision.json"),
     );
     artifact_refs.insert(
         "samples".to_string(),
@@ -1302,6 +1377,19 @@ pub fn freeze_recorder_trigger(
         data_quality: frozen_window.data_quality.clone(),
     };
 
+    let coverage_ref = format!("artifact://recorder/incidents/{incident_id}/coverage.json");
+    let trigger_event_ref =
+        format!("artifact://recorder/incidents/{incident_id}/trigger_event.json");
+    let trigger_decision_ref =
+        format!("artifact://recorder/incidents/{incident_id}/trigger_decision.json");
+    let decision = request.trigger_decision.unwrap_or_else(|| {
+        default_trigger_decision_for_freeze(
+            incident_id,
+            trigger_name,
+            &coverage_ref,
+            &trigger_event_ref,
+        )
+    });
     write_json(
         &incident_dir.join("trigger_event.json"),
         &serde_json::json!({
@@ -1310,9 +1398,12 @@ pub fn freeze_recorder_trigger(
             "trigger_time_mono_ns": trigger_time_mono_ns,
             "agent_contract": "preservation_reason_only",
             "root_cause_claim": false,
+            "trigger_decision_ref": trigger_decision_ref,
+            "coverage_ref": coverage_ref,
             "data_quality": medium_quality()
         }),
     )?;
+    write_json(&incident_dir.join("trigger_decision.json"), &decision)?;
     write_jsonl(&incident_dir.join("samples.jsonl"), &freeze_samples)?;
     write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
     write_json(&incident_dir.join("coverage.json"), &coverage)?;
@@ -1324,6 +1415,47 @@ pub fn freeze_recorder_trigger(
         frozen_window,
         run_dir: incident_dir,
     })
+}
+
+fn default_trigger_decision_for_freeze(
+    incident_id: &str,
+    trigger_name: &str,
+    coverage_ref: &str,
+    trigger_event_ref: &str,
+) -> TriggerDecision {
+    TriggerDecision {
+        schema_version: "obs.trigger_decision.v1".to_string(),
+        decision_id: format!("TD-{incident_id}"),
+        policy_id: "legacy-profile-trigger-policy".to_string(),
+        rule_id: format!("{trigger_name}_v1"),
+        trigger_name: trigger_name.to_string(),
+        trigger_kind: TriggerKind::BurstCount,
+        decision: TriggerDecisionOutcome::Fired,
+        decision_reason: TriggerDecisionReason::BurstCountCrossed,
+        signal_id: "kmsg.message".to_string(),
+        coverage_signal_id: "kmsg.cursor".to_string(),
+        observed_value: null_option_f64(),
+        threshold: null_option_f64(),
+        coverage_state: RecorderCoverageState::Unknown,
+        coverage_confidence: RecorderCoverageConfidence::Unknown,
+        coverage_ref: Some(coverage_ref.to_string()),
+        budget_decision: TriggerBudgetDecision::Accepted,
+        budget_status_ref: None,
+        incident_id: Some(incident_id.to_string()),
+        trigger_event_ref: Some(trigger_event_ref.to_string()),
+        root_cause_claim: false,
+        data_quality: DataQuality {
+            clock_confidence: ClockConfidence::Medium,
+            notes: vec![
+                "default trigger decision was synthesized by trigger freeze helper".to_string(),
+            ],
+            ..Default::default()
+        },
+    }
+}
+
+fn null_option_f64() -> Option<f64> {
+    None
 }
 
 fn freeze_reason_for_marker(marker: &RecorderMarker) -> String {

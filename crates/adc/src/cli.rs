@@ -281,6 +281,8 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
         read_optional_json_file(&incident_dir.join("marker.json"))?;
     let trigger_event: Option<serde_json::Value> =
         read_optional_json_file(&incident_dir.join("trigger_event.json"))?;
+    let trigger_decision: Option<serde_json::Value> =
+        read_optional_json_file(&incident_dir.join("trigger_decision.json"))?;
     let incident: serde_json::Value = read_json_file(&incident_dir.join("incident.json"))?;
     let frozen_window: serde_json::Value =
         read_json_file(&incident_dir.join("frozen_window.json"))?;
@@ -293,6 +295,14 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
         .map_err(|err| err.to_string())?;
     let coverage_ref = adc_core::recorder_incident_artifact_ref(incident_id, "coverage.json")
         .map_err(|err| err.to_string())?;
+    let trigger_decision_ref = if trigger_decision.is_some() {
+        Some(
+            adc_core::recorder_incident_artifact_ref(incident_id, "trigger_decision.json")
+                .map_err(|err| err.to_string())?,
+        )
+    } else {
+        None
+    };
     let samples_ref = adc_core::recorder_incident_artifact_ref(incident_id, "samples.jsonl")
         .map_err(|err| err.to_string())?;
     let response = serde_json::json!({
@@ -302,9 +312,11 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
         "frozen_window_ref": frozen_window_ref,
         "loss_report_ref": loss_report_ref,
         "coverage_ref": coverage_ref,
+        "trigger_decision_ref": trigger_decision_ref,
         "samples_ref": samples_ref,
         "marker": marker,
         "trigger_event": trigger_event,
+        "trigger_decision": trigger_decision,
         "incident": incident,
         "frozen_window": frozen_window,
         "data_quality": {
