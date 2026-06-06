@@ -162,6 +162,21 @@ bash scripts/e2e/target/run-target-mcp-fleet-smoke.sh
 bash scripts/e2e/target/run-perf-test.sh
 ```
 
+PR10 recorder resource discipline on `target55`:
+
+```bash
+cargo build -p adc -p adc-targetd
+bash scripts/e2e/target/run-target55-resource-discipline-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-resource-discipline-smoke
+```
+
+This smoke copies the local `adc` and `adc-targetd` binaries to a temporary
+directory on `target55`, runs a no-trigger continuous recorder check, simulates
+`battery_low`, freezes a marker incident, resolves bounded recorder refs, and
+copies a `summary.json` report back under the result root.
+
 Optional install/provision helpers:
 
 ```bash

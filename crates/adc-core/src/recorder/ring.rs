@@ -114,6 +114,27 @@ impl RecorderRing {
             let expected_but_absent =
                 self.expected_signals.contains_key(&signal_id) && recorded == 0 && dropped == 0;
             let mut signal_quality = data_quality_for_drop_count(dropped);
+            if let Some(expected_signal) = self.expected_signals.get(&signal_id) {
+                signal_quality.throttled |= expected_signal.data_quality.throttled;
+                signal_quality.truncated |= expected_signal.data_quality.truncated;
+                signal_quality.dropped |= expected_signal.data_quality.dropped;
+                signal_quality.drop_count = signal_quality
+                    .drop_count
+                    .saturating_add(expected_signal.data_quality.drop_count);
+                signal_quality
+                    .missing
+                    .extend(expected_signal.data_quality.missing.clone());
+                signal_quality
+                    .notes
+                    .extend(expected_signal.data_quality.notes.clone());
+                buffer_quality.throttled |= expected_signal.data_quality.throttled;
+                buffer_quality
+                    .missing
+                    .extend(expected_signal.data_quality.missing.clone());
+                buffer_quality
+                    .notes
+                    .extend(expected_signal.data_quality.notes.clone());
+            }
             if expected_but_absent {
                 signal_quality.missing.push(format!(
                     "expected recorder signal {signal_id} has no retained samples"

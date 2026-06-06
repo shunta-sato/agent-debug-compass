@@ -33,4 +33,5 @@ assert fr["evidence_advantage_count"] >= 1
 assert fr["observation_coverage_present_count"] >= 1
 assert fr["missing_evidence_distinguished_count"] >= 1
 assert fr["overhead_budget_violation_count"] == 0
+assert fr["resource_budget_violation_count"] == 0
 PY

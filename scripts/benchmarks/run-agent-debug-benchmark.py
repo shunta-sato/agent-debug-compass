@@ -29,6 +29,7 @@ def main() -> int:
         "evidence_advantage_count": 0,
         "hypothesis_rank_improvement_count": 0,
         "overhead_budget_violation_count": 0,
+        "resource_budget_violation_count": 0,
         "observation_coverage_present_count": 0,
         "missing_evidence_distinguished_count": 0,
     }
@@ -132,6 +133,10 @@ def update_flight_recorder_metrics(metrics, comparison):
         metrics["hypothesis_rank_improvement_count"] += 1
     if recorder.get("recorder_overhead_within_budget", True) is not True:
         metrics["overhead_budget_violation_count"] += 1
+    if recorder.get("recorder_resource_within_budget", True) is not True:
+        metrics["resource_budget_violation_count"] += 1
+    if recorder.get("continuous_ring_disk_write_bytes", 0) != 0:
+        metrics["resource_budget_violation_count"] += 1
     if recorder.get("observation_coverage_present", False):
         metrics["observation_coverage_present_count"] += 1
     if recorder.get("missing_evidence_distinguished", False):

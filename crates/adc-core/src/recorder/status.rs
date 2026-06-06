@@ -14,6 +14,7 @@ use super::{
     },
     overhead::default_recorder_overhead,
     quality::data_quality_for_drop_count,
+    resource::recorder_resource_status_for_overhead,
 };
 
 pub fn recorder_status_path(artifact_root: impl AsRef<Path>) -> PathBuf {
@@ -73,6 +74,7 @@ pub fn recorder_status_for(
         budget_status: recorder_default_budget_status(&budget, 0),
         budget,
         overhead,
+        resource_status: None,
     })
 }
 
@@ -95,11 +97,20 @@ pub fn recorder_status_for_with_overhead(
         budget,
         budget_status,
         overhead,
+        resource_status: None,
     })
 }
 
 pub fn recorder_status_from_input(input: RecorderStatusInput) -> RecorderStatus {
     let dropped = input.buffer_status.data_quality.drop_count;
+    let resource_status = input.resource_status.unwrap_or_else(|| {
+        recorder_resource_status_for_overhead(
+            input.target_id.clone(),
+            &input.budget,
+            &input.overhead,
+            None,
+        )
+    });
     RecorderStatus {
         schema_version: "obs.recorder_status.v1".to_string(),
         target_id: input.target_id,
@@ -118,6 +129,7 @@ pub fn recorder_status_from_input(input: RecorderStatusInput) -> RecorderStatus 
         budget: input.budget,
         budget_status: input.budget_status,
         overhead: input.overhead,
+        resource_status,
         data_quality: data_quality_for_drop_count(dropped),
     }
 }

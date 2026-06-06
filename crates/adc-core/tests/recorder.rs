@@ -2,9 +2,11 @@ use std::time::Duration;
 
 use adc_core::{
     arm_profile, default_recorder_budget, freeze_recorder_marker, freeze_recorder_trigger,
-    marker_at_received_time, read_recorder_status_artifact, recorder_incident_budget_status,
-    recorder_ring_capacity_for_budget, recorder_status_for, run_service_for,
-    write_pending_recorder_marker, RecorderAdmissionDecision, RecorderAdmissionRefusalReason,
+    marker_at_received_time, read_recorder_status_artifact, recorder_budget_for_power_mode,
+    recorder_incident_budget_status, recorder_power_snapshot_from_sysfs,
+    recorder_resource_status_for_overhead, recorder_ring_capacity_for_budget, recorder_status_for,
+    run_service_for, write_pending_recorder_marker, RecorderAdmissionDecision,
+    RecorderAdmissionRefusalReason, RecorderBatteryState, RecorderPowerMode, RecorderPowerSource,
     RecorderRing, RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample,
     RecorderStatusWriteGovernor, RetainedArtifactBytesEstimateScope,
 };
@@ -189,6 +191,66 @@ fn service_run_status_reports_scoped_recorder_overhead_bytes() {
     assert!(notes.iter().any(|note| note.as_str().is_some_and(|value| {
         value.contains("status_write_bytes excludes the current status artifact write")
     })));
+}
+
+#[test]
+fn recorder_power_snapshot_reports_unknown_when_power_supply_is_absent() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let snapshot = recorder_power_snapshot_from_sysfs(temp.path().join("missing-power-supply"));
+
+    assert_eq!(snapshot.power_source, RecorderPowerSource::Unknown);
+    assert_eq!(snapshot.battery_state, RecorderBatteryState::Unknown);
+    assert!(snapshot.battery_percent.is_none());
+    assert!(snapshot
+        .data_quality
+        .missing
+        .iter()
+        .any(|missing| missing.contains("battery state is unavailable")));
+}
+
+#[test]
+fn battery_low_policy_reduces_recorder_budget_without_mutating_default_budget() {
+    let default_budget = default_recorder_budget();
+    let battery_low_budget =
+        recorder_budget_for_power_mode(&default_budget, RecorderPowerMode::BatteryLow);
+
+    assert_eq!(default_budget.max_samples_per_second, 16);
+    assert_eq!(battery_low_budget.max_samples_per_second, 1);
+    assert_eq!(battery_low_budget.max_retention_ms, 10_000);
+    assert!(battery_low_budget.data_quality.throttled);
+}
+
+#[test]
+fn resource_status_separates_continuous_ring_writes_from_status_and_freeze_writes() {
+    let mut ring = RecorderRing::new("local", 4, 60_000);
+    ring.push(sample(1_000, "memory.summary", 42.0));
+    let budget = default_recorder_budget();
+    let status = recorder_status_for(
+        "local",
+        Some("recorder_memory"),
+        Some("armed"),
+        "recording",
+        ring.status(),
+        budget.clone(),
+    );
+    let resource_status =
+        recorder_resource_status_for_overhead("local", &budget, &status.overhead, None);
+
+    assert_eq!(resource_status.continuous_ring_disk_write_bytes, 0);
+    assert_eq!(
+        resource_status.status_write_bytes,
+        status.overhead.status_write_bytes
+    );
+    assert_eq!(
+        resource_status.frozen_artifact_write_bytes,
+        status.overhead.frozen_artifact_bytes
+    );
+    assert_eq!(resource_status.network_upload_bytes, 0);
+    assert!(resource_status
+        .data_quality
+        .notes
+        .iter()
+        .any(|note| note.contains("memory-backed")));
 }
 
 #[test]

@@ -220,6 +220,131 @@ pub struct RecorderOverheadAccounting {
     pub incident_count: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderPowerSource {
+    AcPower,
+    Battery,
+    External,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderBatteryState {
+    Charging,
+    Discharging,
+    Full,
+    Low,
+    Critical,
+    Absent,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderResourceScope {
+    ServiceRun,
+    CurrentStatusSnapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderPowerMode {
+    Unknown,
+    AcPower,
+    BatteryNormal,
+    BatteryLow,
+    BatteryCritical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderDegradationReason {
+    BatteryLow,
+    BatteryCritical,
+    MemoryBudget,
+    SampleRateBudget,
+    UnknownPowerConservativePolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderDegradationAction {
+    Downsample,
+    ShortenRetention,
+    DropLowPrioritySignal,
+    ReduceStatusWriteRate,
+    RefuseFreeze,
+    PartialFreeze,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderDegradationDecision {
+    pub schema_version: String,
+    pub decision_id: String,
+    pub reason: RecorderDegradationReason,
+    pub actions: Vec<RecorderDegradationAction>,
+    pub affected_signals: Vec<String>,
+    pub preserved_signals: Vec<String>,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderPowerPolicyMode {
+    pub mode: RecorderPowerMode,
+    pub max_samples_per_second: u64,
+    pub max_retention_ms: u64,
+    pub low_priority_signals_enabled: bool,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderPowerPolicy {
+    pub schema_version: String,
+    pub policy_id: String,
+    pub modes: Vec<RecorderPowerPolicyMode>,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecorderResourceStatus {
+    pub schema_version: String,
+    pub target_id: String,
+    pub resource_scope: RecorderResourceScope,
+    pub power_source: RecorderPowerSource,
+    pub battery_state: RecorderBatteryState,
+    pub battery_percent: Option<f64>,
+    pub policy_mode: RecorderPowerMode,
+    pub estimated_ring_memory_bytes: u64,
+    pub max_memory_bytes: u64,
+    pub wakeup_rate_hz: Option<f64>,
+    pub recorder_loop_rate_hz: Option<f64>,
+    pub recorder_sample_rate_hz: Option<f64>,
+    pub status_write_rate_hz: Option<f64>,
+    pub continuous_ring_disk_write_bytes: u64,
+    pub status_write_bytes: u64,
+    pub frozen_artifact_write_bytes: u64,
+    pub network_upload_bytes: u64,
+    pub degradation_decisions: Vec<RecorderDegradationDecision>,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecorderPowerSnapshot {
+    pub power_source: RecorderPowerSource,
+    pub battery_state: RecorderBatteryState,
+    pub battery_percent: Option<f64>,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RecorderResourceRates {
+    pub recorder_loop_rate_hz: Option<f64>,
+    pub recorder_sample_rate_hz: Option<f64>,
+    pub status_write_rate_hz: Option<f64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecorderStorageStatus {
     pub storage_mode: String,
@@ -242,6 +367,7 @@ pub struct RecorderStatus {
     pub budget: RecorderBudget,
     pub budget_status: RecorderBudgetStatus,
     pub overhead: RecorderOverhead,
+    pub resource_status: RecorderResourceStatus,
     pub data_quality: DataQuality,
 }
 
@@ -255,6 +381,7 @@ pub struct RecorderStatusInput {
     pub budget: RecorderBudget,
     pub budget_status: RecorderBudgetStatus,
     pub overhead: RecorderOverhead,
+    pub resource_status: Option<RecorderResourceStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

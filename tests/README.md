@@ -75,10 +75,17 @@ Examples:
 bash scripts/e2e/target/run-pi5-release-smoke.sh
 bash scripts/e2e/target/run-target-mcp-fleet-smoke.sh
 bash scripts/e2e/target/run-perf-test.sh
+bash scripts/e2e/target/run-target55-resource-discipline-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-resource-discipline-smoke
 ```
 
 When these are skipped, record the hardware/setup reason in the PR or release
-notes.
+notes. The target55 resource-discipline smoke is the PR10 hardware gate: it
+checks no-trigger continuous ring write behavior, simulated battery-low
+degradation, marker freeze resource accounting, and bounded recorder refs on a
+configured same-LAN target.
 
 ## Where to Add New Tests
 

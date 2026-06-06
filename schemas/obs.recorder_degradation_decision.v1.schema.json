@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_degradation_decision.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_id",
+    "reason",
+    "actions",
+    "affected_signals",
+    "preserved_signals",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_degradation_decision.v1"]},
+    "decision_id": {"type": "string", "minLength": 1},
+    "reason": {
+      "type": "string",
+      "enum": [
+        "battery_low",
+        "battery_critical",
+        "memory_budget",
+        "sample_rate_budget",
+        "unknown_power_conservative_policy"
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "downsample",
+          "shorten_retention",
+          "drop_low_priority_signal",
+          "reduce_status_write_rate",
+          "refuse_freeze",
+          "partial_freeze"
+        ]
+      }
+    },
+    "affected_signals": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "preserved_signals": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_resource_status.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "resource_scope",
+    "power_source",
+    "battery_state",
+    "battery_percent",
+    "policy_mode",
+    "estimated_ring_memory_bytes",
+    "max_memory_bytes",
+    "wakeup_rate_hz",
+    "recorder_loop_rate_hz",
+    "recorder_sample_rate_hz",
+    "status_write_rate_hz",
+    "continuous_ring_disk_write_bytes",
+    "status_write_bytes",
+    "frozen_artifact_write_bytes",
+    "network_upload_bytes",
+    "degradation_decisions",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_resource_status.v1"]},
+    "target_id": {"type": "string", "minLength": 1},
+    "resource_scope": {"type": "string", "enum": ["service_run", "current_status_snapshot"]},
+    "power_source": {"type": "string", "enum": ["ac_power", "battery", "external", "unknown"]},
+    "battery_state": {"type": "string", "enum": ["charging", "discharging", "full", "low", "critical", "absent", "unknown"]},
+    "battery_percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "policy_mode": {"type": "string", "enum": ["unknown", "ac_power", "battery_normal", "battery_low", "battery_critical"]},
+    "estimated_ring_memory_bytes": {"type": "integer", "minimum": 0},
+    "max_memory_bytes": {"type": "integer", "minimum": 1},
+    "wakeup_rate_hz": {"type": ["number", "null"], "minimum": 0},
+    "recorder_loop_rate_hz": {"type": ["number", "null"], "minimum": 0},
+    "recorder_sample_rate_hz": {"type": ["number", "null"], "minimum": 0},
+    "status_write_rate_hz": {"type": ["number", "null"], "minimum": 0},
+    "continuous_ring_disk_write_bytes": {"type": "integer", "minimum": 0},
+    "status_write_bytes": {"type": "integer", "minimum": 0},
+    "frozen_artifact_write_bytes": {"type": "integer", "minimum": 0},
+    "network_upload_bytes": {"type": "integer", "minimum": 0},
+    "degradation_decisions": {
+      "type": "array",
+      "items": {"$ref": "obs.recorder_degradation_decision.v1.schema.json"}
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

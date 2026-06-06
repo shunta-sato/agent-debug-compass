@@ -199,6 +199,25 @@
       "coverage_levels": ["static", "generated_cli"]
     },
     {
+      "contract": "obs.recorder_resource_status.v1",
+      "schema": "schemas/obs.recorder_resource_status.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_resource_status.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_resource_status.v1.generated.json"],
+      "coverage_levels": ["static", "generated_cli"]
+    },
+    {
+      "contract": "obs.recorder_power_policy.v1",
+      "schema": "schemas/obs.recorder_power_policy.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_power_policy.v1.min.json"],
+      "coverage_levels": ["static"]
+    },
+    {
+      "contract": "obs.recorder_degradation_decision.v1",
+      "schema": "schemas/obs.recorder_degradation_decision.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_degradation_decision.v1.min.json"],
+      "coverage_levels": ["static"]
+    },
+    {
       "contract": "obs.dataset_manifest.v1",
       "schema": "schemas/obs.dataset_manifest.v1.schema.json",
       "static_fixtures": ["tests/golden/obs.dataset_manifest.v1.min.json"],
