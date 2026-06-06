@@ -497,30 +497,37 @@ Acceptance:
 - no new collectors, richer triggers, post-window capture, or root-cause claims
   are introduced.
 
-### PR8: Symptom Trigger Policy v1
+### PR8: Coverage-Aware Symptom Trigger Policy v1
 
 Deliver:
 
-- trigger policy parser,
-- threshold, slope, delta, burst, and correlation triggers,
-- trigger cooldown and hysteresis,
-- incident merge/storm control,
-- symptom-oriented trigger naming guard,
 - `obs.trigger_policy.v1`,
-- trigger confidence and severity as preservation metadata,
-- autonomous freeze integration that checks observation coverage before Agents
-  interpret trigger absence.
+- `obs.trigger_decision.v1`,
+- strengthened `obs.recorder_trigger_event.v1` links to trigger decisions and
+  coverage,
+- threshold, delta, and burst-count trigger decisions,
+- coverage-aware trigger skip semantics,
+- budget-aware trigger skip semantics,
+- trigger cooldown and hysteresis,
+- service-run scoped storm suppression,
+- symptom-oriented trigger naming guard,
+- bounded trigger decision refs for fired and skipped/suppressed outcomes,
+- generated CLI fixtures and contract coverage.
 
 Acceptance:
 
 - autonomous synthetic incident freezes a bounded retained pre-window in the
   current MVP; bounded post-window capture is a follow-up;
-- repeated trigger storms merge/cool down/degrade;
-- trigger names and outputs do not promote causes;
+- missing or unavailable observation coverage yields
+  `skipped_missing_coverage`, not meaningful `not_fired`;
+- persistent incident budget exhaustion yields `skipped_budget_exhausted`;
+- repeated trigger storms cool down, suppress, or degrade without unbounded
+  incidents;
+- trigger names, decisions, and outputs do not promote causes;
 - automatic trigger policy reuses the same freeze/loss/coverage contracts as
   marker flow;
-- trigger absence is documented as non-evidence unless relevant coverage is
-  sufficient.
+- trigger absence is non-evidence unless relevant coverage is sufficient;
+- ordinary non-fire evaluations do not create a continuous durable write path.
 
 ### PR9: Camera and Inference Degradation Vertical
 

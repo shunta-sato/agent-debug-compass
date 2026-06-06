@@ -58,6 +58,18 @@ pub struct TriggerRule {
     pub severity_at_least: Option<String>,
     #[serde(default)]
     pub patterns: Vec<String>,
+    #[serde(default)]
+    pub cooldown_ms: Option<u64>,
+    #[serde(default)]
+    pub hysteresis: Option<TriggerHysteresis>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TriggerHysteresis {
+    #[serde(default)]
+    pub clear_below: Option<f64>,
+    #[serde(default)]
+    pub min_clear_duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

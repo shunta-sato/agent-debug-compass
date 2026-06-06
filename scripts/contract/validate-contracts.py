@@ -248,6 +248,10 @@ def validate_semantic_invariants(
         validate_recorder_incident(fixture, path, errors)
     elif schema_id == "obs.recorder_frozen_window.v1":
         validate_recorder_frozen_window(fixture, path, errors)
+    elif schema_id == "obs.trigger_policy.v1":
+        validate_trigger_policy(fixture, path, errors)
+    elif schema_id == "obs.trigger_decision.v1":
+        validate_trigger_decision(fixture, path, errors)
     elif schema_id == "adc.investigation_trace.v1":
         validate_investigation_trace(fixture, path, errors)
 
@@ -611,6 +615,77 @@ def validate_recorder_frozen_window(fixture: Any, path: str, errors: list[str]) 
             )
     if not isinstance(fixture.get("loss_report"), dict):
         errors.append(f"{path}.loss_report: frozen window must include loss_report")
+
+
+def validate_trigger_policy(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    for index, rule in enumerate(fixture.get("rules", [])):
+        if not isinstance(rule, dict):
+            continue
+        if contains_root_cause_claim(rule.get("trigger_name", "")):
+            errors.append(
+                f"{path}.rules[{index}].trigger_name: trigger name must be symptom/event oriented"
+            )
+        if rule.get("root_cause_claim") is not False:
+            errors.append(
+                f"{path}.rules[{index}].root_cause_claim: trigger policy must not claim root cause"
+            )
+        kind = rule.get("trigger_kind")
+        if kind == "threshold" and rule.get("threshold") is None:
+            errors.append(
+                f"{path}.rules[{index}].threshold: threshold trigger requires threshold"
+            )
+        if kind == "delta" and rule.get("delta") is None:
+            errors.append(f"{path}.rules[{index}].delta: delta trigger requires delta")
+        if kind == "burst_count":
+            if rule.get("burst_count") is None:
+                errors.append(
+                    f"{path}.rules[{index}].burst_count: burst_count trigger requires burst_count"
+                )
+            if rule.get("burst_window_ms") is None:
+                errors.append(
+                    f"{path}.rules[{index}].burst_window_ms: burst_count trigger requires burst_window_ms"
+                )
+
+
+def validate_trigger_decision(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    if contains_root_cause_claim(fixture.get("trigger_name", "")):
+        errors.append(f"{path}.trigger_name: trigger decision name must be symptom/event oriented")
+    if contains_root_cause_claim(fixture.get("decision_reason", "")):
+        errors.append(
+            f"{path}.decision_reason: trigger decision reason must not promote root-cause claims"
+        )
+    if fixture.get("root_cause_claim") is not False:
+        errors.append(f"{path}.root_cause_claim: trigger decision must not claim root cause")
+    decision = fixture.get("decision")
+    reason = fixture.get("decision_reason")
+    coverage_state = fixture.get("coverage_state")
+    budget_decision = fixture.get("budget_decision")
+    if coverage_state in {"missing", "unavailable", "unknown"} and decision == "not_fired":
+        errors.append(
+            f"{path}.decision: missing/unavailable/unknown coverage must not be reported as not_fired"
+        )
+    if decision == "skipped_missing_coverage" and reason not in {
+        "coverage_missing",
+        "coverage_unavailable",
+    }:
+        errors.append(
+            f"{path}.decision_reason: skipped_missing_coverage requires coverage_missing or coverage_unavailable"
+        )
+    if decision == "skipped_budget_exhausted" and budget_decision != "skipped_budget_exhausted":
+        errors.append(
+            f"{path}.budget_decision: skipped_budget_exhausted decision requires skipped_budget_exhausted budget_decision"
+        )
+    if decision == "fired":
+        if not fixture.get("incident_id"):
+            errors.append(f"{path}.incident_id: fired decision requires incident_id")
+        if not fixture.get("trigger_event_ref"):
+            errors.append(f"{path}.trigger_event_ref: fired decision requires trigger_event_ref")
+        if budget_decision != "accepted":
+            errors.append(f"{path}.budget_decision: fired decision requires accepted budget")
 
 
 def validate_investigation_trace(fixture: Any, path: str, errors: list[str]) -> None:

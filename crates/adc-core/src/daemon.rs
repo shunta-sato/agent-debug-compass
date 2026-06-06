@@ -14,18 +14,22 @@ use crate::{
     aggregate_event_data_quality, build_evidence_index, build_overhead_report,
     collectors::{CpuSample, MemorySample, NetworkDeviceSample},
     default_recorder_budget, default_target_id, drain_pending_recorder_markers, evaluate_trigger,
-    freeze_recorder_marker, freeze_recorder_trigger, parse_meminfo, parse_net_dev, parse_proc_stat,
+    freeze_recorder_marker, freeze_recorder_trigger_with_decision, parse_meminfo, parse_net_dev,
+    parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
     recorder_expected_signals_for_collectors, recorder_freeze_decision_for_refused_trigger,
     recorder_incident_budget_status, recorder_marker_result_for_frozen,
     recorder_marker_result_for_refused_with_budget_status, recorder_overhead_for_service_run,
-    recorder_ring_capacity_for_budget, recorder_status_from_input, snapshot, write_evidence_index,
-    write_recorder_marker_result, write_recorder_status_artifact, AdcError, AdcResult,
+    recorder_ring_capacity_for_budget, recorder_status_from_input, snapshot,
+    trigger_decision_for_budget_refusal, trigger_decision_for_rule,
+    trigger_decision_with_runtime_state, write_evidence_index, write_recorder_marker_result,
+    write_recorder_status_artifact, write_recorder_trigger_decision, AdcError, AdcResult,
     ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
     OverheadSample, Profile, RecorderAdmissionDecision, RecorderBudgetStatus,
-    RecorderOverheadAccounting, RecorderOverheadScope, RecorderRing, RecorderSample,
-    RecorderSampleRateGovernor, RecorderSignalSample, RecorderStatusInput,
-    RecorderStatusWriteGovernor, TimeRangeNs, TriggerEvaluation, TriggerInput,
+    RecorderCoverageConfidence, RecorderCoverageState, RecorderOverheadAccounting,
+    RecorderOverheadScope, RecorderRing, RecorderSample, RecorderSampleRateGovernor,
+    RecorderSignalCoverage, RecorderSignalSample, RecorderStatusInput, RecorderStatusWriteGovernor,
+    TimeRangeNs, TriggerDecision, TriggerEvaluation, TriggerInput, TriggerRuntimeState,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,9 +73,18 @@ struct KmsgSample {
 
 #[derive(Debug, Clone)]
 struct MatchedLiveTrigger {
+    rule: TriggerRule,
     evaluation: TriggerEvaluation,
     input: TriggerInput,
     source: String,
+    decision: TriggerDecision,
+    coverage: RecorderSignalCoverage,
+}
+
+#[derive(Debug, Clone)]
+enum LiveTriggerOutcome {
+    Fired(Box<MatchedLiveTrigger>),
+    MaterialDecision(Box<TriggerDecision>),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -228,6 +241,8 @@ pub fn run_service_for(
     let mut recorder_status_writer =
         RecorderStatusWriteGovernor::new(recorder_budget.max_status_write_interval_ms);
     let mut recorder_accounting = RecorderRuntimeAccounting::default();
+    let mut trigger_state = TriggerRuntimeState::default();
+    let mut materialized_trigger_decisions = BTreeSet::new();
     let mut recorder_ring = RecorderRing::new(
         default_target_id(),
         recorder_ring_capacity_for_budget(&recorder_budget),
@@ -269,6 +284,8 @@ pub fn run_service_for(
             );
             recorder_sample_rate =
                 RecorderSampleRateGovernor::new(recorder_budget.max_samples_per_second);
+            trigger_state = TriggerRuntimeState::default();
+            materialized_trigger_decisions.clear();
             recorder_profile_id = Some(profile_id.clone());
         }
         let sample = collect_live_sample(&profile);
@@ -341,8 +358,28 @@ pub fn run_service_for(
                 recorder_accounting.record_status_write(status_bytes);
             }
         }
-        if let Some(matched) = evaluate_live_triggers(&profile, previous_sample.as_ref(), &sample)?
-        {
+        if let Some(outcome) = evaluate_live_triggers(
+            &profile,
+            previous_sample.as_ref(),
+            &sample,
+            &recorder_ring,
+            &recorder_budget,
+            &mut trigger_state,
+        )? {
+            let matched = match outcome {
+                LiveTriggerOutcome::Fired(matched) => *matched,
+                LiveTriggerOutcome::MaterialDecision(decision) => {
+                    if materialized_trigger_decisions.insert(decision.decision_id.clone()) {
+                        write_recorder_trigger_decision(artifact_root, decision.as_ref())?;
+                    }
+                    previous_sample = Some(sample);
+                    sleep_until_next(
+                        deadline,
+                        Duration::from_millis(profile.sampling.interval_ms),
+                    );
+                    continue;
+                }
+            };
             let run_id = next_daemon_run_id();
             create_trigger_bundle(artifact_root, &run_id, &profile, &sample, &matched)?;
             let incident_id = format!("INC-TRIGGER-{}", sample.time_mono_ns);
@@ -353,12 +390,24 @@ pub fn run_service_for(
                 frozen_incidents.len() as u64,
             );
             if !recorder_freeze_budget_exhausted(&budget_status, &mut summary_quality) {
-                let freeze = freeze_recorder_trigger(
+                let coverage_ref =
+                    format!("artifact://recorder/incidents/{incident_id}/coverage.json");
+                let trigger_event_ref =
+                    format!("artifact://recorder/incidents/{incident_id}/trigger_event.json");
+                let mut trigger_decision = matched.decision.clone();
+                trigger_decision.coverage_ref = Some(coverage_ref);
+                trigger_decision.incident_id = Some(incident_id.clone());
+                trigger_decision.trigger_event_ref = Some(trigger_event_ref);
+                trigger_decision.budget_decision = crate::TriggerBudgetDecision::Accepted;
+                let freeze = freeze_recorder_trigger_with_decision(
                     artifact_root,
-                    &incident_id,
-                    "win-trigger-001",
-                    &matched.evaluation.trigger_name,
-                    sample.time_mono_ns,
+                    crate::RecorderTriggerFreezeRequest {
+                        incident_id: &incident_id,
+                        window_id: "win-trigger-001",
+                        trigger_name: &matched.evaluation.trigger_name,
+                        trigger_time_mono_ns: sample.time_mono_ns,
+                        trigger_decision: Some(trigger_decision),
+                    },
                     &recorder_ring,
                     &recorder_budget,
                 )?;
@@ -387,6 +436,15 @@ pub fn run_service_for(
                         .join("recorder_freeze_decision.json"),
                     &decision,
                 )?;
+                let trigger_decision = trigger_decision_for_budget_refusal(
+                    "default-symptom-trigger-policy",
+                    &matched.rule,
+                    Some(&matched.input),
+                    Some(&matched.coverage),
+                    None,
+                    &decision.budget_status,
+                )?;
+                write_recorder_trigger_decision(artifact_root, &trigger_decision)?;
             }
             record_run(artifact_root, &run_id)?;
             captured_runs.push(run_id);
@@ -620,18 +678,65 @@ fn evaluate_live_triggers(
     profile: &Profile,
     previous: Option<&LiveSample>,
     current: &LiveSample,
-) -> AdcResult<Option<MatchedLiveTrigger>> {
+    recorder_ring: &RecorderRing,
+    recorder_budget: &crate::RecorderBudget,
+    trigger_state: &mut TriggerRuntimeState,
+) -> AdcResult<Option<LiveTriggerOutcome>> {
     for rule in &profile.triggers {
+        let coverage = trigger_coverage_for_rule(rule, recorder_ring, recorder_budget);
         let Some((input, source)) = trigger_input(rule, previous, current) else {
+            let decision = trigger_decision_for_rule(
+                "default-symptom-trigger-policy",
+                rule,
+                None,
+                Some(&coverage),
+                None,
+                None,
+            )?;
+            if matches!(
+                decision.decision,
+                crate::TriggerDecisionOutcome::SkippedMissingCoverage
+                    | crate::TriggerDecisionOutcome::SkippedPolicyInvalid
+            ) {
+                return Ok(Some(LiveTriggerOutcome::MaterialDecision(Box::new(
+                    decision,
+                ))));
+            }
             continue;
         };
         let evaluation = evaluate_trigger(rule, &input)?;
-        if evaluation.matched {
-            return Ok(Some(MatchedLiveTrigger {
-                evaluation,
-                input,
-                source,
-            }));
+        let decision = trigger_decision_with_runtime_state(
+            "default-symptom-trigger-policy",
+            rule,
+            Some(&input),
+            Some(&coverage),
+            None,
+            current.time_mono_ns,
+            trigger_state,
+        )?;
+        if evaluation.matched && decision.decision == crate::TriggerDecisionOutcome::Fired {
+            return Ok(Some(LiveTriggerOutcome::Fired(Box::new(
+                MatchedLiveTrigger {
+                    rule: rule.clone(),
+                    evaluation,
+                    input,
+                    source,
+                    decision,
+                    coverage,
+                },
+            ))));
+        }
+        if matches!(
+            decision.decision,
+            crate::TriggerDecisionOutcome::SuppressedCooldown
+                | crate::TriggerDecisionOutcome::SuppressedHysteresis
+                | crate::TriggerDecisionOutcome::SuppressedStorm
+                | crate::TriggerDecisionOutcome::SkippedMissingCoverage
+                | crate::TriggerDecisionOutcome::SkippedPolicyInvalid
+        ) {
+            return Ok(Some(LiveTriggerOutcome::MaterialDecision(Box::new(
+                decision,
+            ))));
         }
     }
     Ok(None)
@@ -693,6 +798,84 @@ fn trigger_input(
         },
         signal.split('.').next().unwrap_or("unknown").to_string(),
     ))
+}
+
+fn trigger_coverage_for_rule(
+    rule: &TriggerRule,
+    recorder_ring: &RecorderRing,
+    recorder_budget: &crate::RecorderBudget,
+) -> RecorderSignalCoverage {
+    let signal_id = rule.signal.as_deref().unwrap_or("kmsg.message").to_string();
+    let coverage_signal_id = crate::coverage_signal_id_for_trigger_signal(&signal_id);
+    let status = recorder_ring.status();
+    if let Some(signal) = status
+        .signals
+        .iter()
+        .find(|signal| signal.signal_id == coverage_signal_id)
+    {
+        let coverage_state = if signal.recorded_samples > 0 {
+            if signal.data_quality.throttled || signal.dropped_samples > 0 {
+                RecorderCoverageState::Partial
+            } else {
+                RecorderCoverageState::Covered
+            }
+        } else {
+            RecorderCoverageState::Missing
+        };
+        return RecorderSignalCoverage {
+            signal_id: coverage_signal_id,
+            expected: true,
+            coverage_state,
+            coverage_confidence: RecorderCoverageConfidence::Medium,
+            configured_interval_ms: signal.configured_interval_ms,
+            effective_interval_ms: signal.configured_interval_ms.max(
+                1000_u64.saturating_add(recorder_budget.max_samples_per_second.saturating_sub(1))
+                    / recorder_budget.max_samples_per_second.max(1),
+            ),
+            expected_samples_configured: signal.expected_samples,
+            expected_samples_budgeted: signal.expected_samples,
+            expected_samples: signal.expected_samples,
+            expected_samples_basis: crate::ExpectedSamplesBasis::BudgetedRecorderInterval,
+            retained_samples_before_freeze: signal.recorded_samples,
+            exported_samples: signal.recorded_samples,
+            dropped_samples: signal.dropped_samples,
+            truncated_samples_due_to_freeze_budget: 0,
+            loss_report_ref: "artifact://recorder/incidents/PENDING/loss_report.json".to_string(),
+            loss_collector_id: signal.signal_id.clone(),
+            loss_reasons: Vec::new(),
+            capability_status: crate::CapabilityStatus::Unknown,
+            data_quality: signal.data_quality.clone(),
+        };
+    }
+
+    let mut data_quality = DataQuality {
+        clock_confidence: crate::ClockConfidence::Medium,
+        ..Default::default()
+    };
+    data_quality.missing.push(format!(
+        "{coverage_signal_id} coverage is missing from recorder ring"
+    ));
+    RecorderSignalCoverage {
+        signal_id: coverage_signal_id.clone(),
+        expected: true,
+        coverage_state: RecorderCoverageState::Missing,
+        coverage_confidence: RecorderCoverageConfidence::Unknown,
+        configured_interval_ms: 1000,
+        effective_interval_ms: 1000,
+        expected_samples_configured: None,
+        expected_samples_budgeted: None,
+        expected_samples: None,
+        expected_samples_basis: crate::ExpectedSamplesBasis::Unknown,
+        retained_samples_before_freeze: 0,
+        exported_samples: 0,
+        dropped_samples: 0,
+        truncated_samples_due_to_freeze_budget: 0,
+        loss_report_ref: "artifact://recorder/incidents/PENDING/loss_report.json".to_string(),
+        loss_collector_id: coverage_signal_id,
+        loss_reasons: vec!["coverage_missing".to_string()],
+        capability_status: crate::CapabilityStatus::Unknown,
+        data_quality,
+    }
 }
 
 fn network_total_bytes(sample: &NetworkDeviceSample) -> u64 {

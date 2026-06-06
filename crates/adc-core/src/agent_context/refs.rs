@@ -215,6 +215,18 @@ fn recorder_ref_path(
                 PathBuf::from("markers").join(kind).join(file),
             )))
         }
+        ["trigger-decisions", file] => {
+            let decision_id = file.strip_suffix(".json").ok_or_else(|| {
+                AdcError::Artifact("recorder trigger decision refs must end with .json".to_string())
+            })?;
+            crate::validate_recorder_file_segment(decision_id, "decision_id")?;
+            Ok(Some((
+                "recorder_trigger_decision",
+                "application/json",
+                crate::ContentClass::TriggerDecision,
+                PathBuf::from("trigger-decisions").join(file),
+            )))
+        }
         ["incidents", incident_id, artifact_name] => {
             crate::validate_recorder_file_segment(incident_id, "incident_id")?;
             let (ref_kind, content_type, content_class) = match *artifact_name {
@@ -252,6 +264,11 @@ fn recorder_ref_path(
                     "recorder_trigger_event",
                     "application/json",
                     crate::ContentClass::TriggerEvent,
+                ),
+                "trigger_decision.json" => (
+                    "recorder_trigger_decision",
+                    "application/json",
+                    crate::ContentClass::TriggerDecision,
                 ),
                 _ => {
                     return Err(AdcError::Artifact(format!(

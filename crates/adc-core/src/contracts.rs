@@ -49,6 +49,7 @@ pub enum ContentClass {
     RecorderMarkerResult,
     LossReport,
     TriggerEvent,
+    TriggerDecision,
     DatasetManifest,
 }
 
@@ -1018,6 +1019,7 @@ fn trust_level_for_content_class(content_class: ContentClass) -> TrustLevel {
         | ContentClass::RecorderObservationCoverage
         | ContentClass::LossReport
         | ContentClass::TriggerEvent
+        | ContentClass::TriggerDecision
         | ContentClass::DatasetManifest => TrustLevel::TrustedAdcGenerated,
         ContentClass::RecorderMarker | ContentClass::RecorderMarkerResult => {
             TrustLevel::UntrustedUserProvidedText

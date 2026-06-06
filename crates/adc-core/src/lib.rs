@@ -120,16 +120,17 @@ pub use probe_packs::{
 pub use profile::{default_profile_dir, load_profile, parse_profile, Profile};
 pub use recorder::{
     default_recorder_budget, drain_pending_recorder_markers, freeze_recorder_marker,
-    freeze_recorder_trigger, marker_at_received_time, read_recorder_status_artifact,
-    recorder_default_budget_status, recorder_expected_signal_for_id,
+    freeze_recorder_trigger, freeze_recorder_trigger_with_decision, marker_at_received_time,
+    read_recorder_status_artifact, recorder_default_budget_status, recorder_expected_signal_for_id,
     recorder_expected_signals_for_collectors, recorder_freeze_decision_for_refused_trigger,
     recorder_incident_artifact_ref, recorder_incident_budget_status, recorder_marker_result_dir,
     recorder_marker_result_for_frozen, recorder_marker_result_for_queued,
     recorder_marker_result_for_refused, recorder_marker_result_for_refused_with_budget_status,
     recorder_overhead_for_service_run, recorder_pending_marker_dir, recorder_pending_marker_ref,
     recorder_ring_capacity_for_budget, recorder_status_for, recorder_status_for_with_overhead,
-    recorder_status_from_input, recorder_status_path, validate_recorder_file_segment,
-    write_pending_recorder_marker, write_recorder_marker_result, write_recorder_status_artifact,
+    recorder_status_from_input, recorder_status_path, recorder_trigger_decision_dir,
+    recorder_trigger_decision_ref, validate_recorder_file_segment, write_pending_recorder_marker,
+    write_recorder_marker_result, write_recorder_status_artifact, write_recorder_trigger_decision,
     AssertedEventTime, CollectorLoss, ExpectedSamplesBasis, FrozenWindowPersistence, LossReport,
     PreservationReason, RecorderAdmissionDecision, RecorderAdmissionRefusalReason, RecorderBudget,
     RecorderBudgetStatus, RecorderBufferStatus, RecorderCoverageConfidence, RecorderCoverageState,
@@ -140,7 +141,8 @@ pub use recorder::{
     RecorderOverheadScope, RecorderRing, RecorderSample, RecorderSampleRateGovernor,
     RecorderSignalCoverage, RecorderSignalSample, RecorderSignalStatus, RecorderState,
     RecorderStatus, RecorderStatusInput, RecorderStatusWriteGovernor, RecorderStorageStatus,
-    RecorderTimeRange, RecorderTriggerFreeze, RetainedArtifactBytesEstimateScope, TimeRange,
+    RecorderTimeRange, RecorderTriggerFreeze, RecorderTriggerFreezeRequest,
+    RetainedArtifactBytesEstimateScope, TimeRange,
 };
 pub use route_compiler::{
     compile_route_for_symptom, CompiledInvestigationRoute, CompiledRoutePack, RejectedRoutePack,
@@ -169,7 +171,13 @@ pub use symptom_context::{
 };
 pub use symptoms::{normalize_symptom, NormalizedSymptom, SymptomKind};
 pub use timeline::{read_timeline_bounded, search_events, SearchEventsQuery, SearchEventsResult};
-pub use trigger::{evaluate_trigger, TriggerEvaluation, TriggerInput};
+pub use trigger::{
+    coverage_signal_id_for_trigger_signal, evaluate_trigger, trigger_decision_for_budget_refusal,
+    trigger_decision_for_rule, trigger_decision_with_runtime_state, trigger_policy_for_profile,
+    TriggerBudgetDecision, TriggerDecision, TriggerDecisionOutcome, TriggerDecisionReason,
+    TriggerEvaluation, TriggerInput, TriggerKind, TriggerPolicy, TriggerPolicyHysteresis,
+    TriggerPolicyRule, TriggerRuntimeState,
+};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

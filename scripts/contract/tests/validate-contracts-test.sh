@@ -390,6 +390,50 @@ assert_fails_with "trigger preservation reason must not promote root-cause claim
     --schema-dir "${REPO_ROOT}/schemas" \
     --fixture-dir "${TMP_DIR}/invalid-frozen-window-trigger-name"
 
+mkdir -p "${TMP_DIR}/invalid-trigger-policy-root-cause-name"
+cp "${REPO_ROOT}/tests/golden/obs.trigger_policy.v1.min.json" \
+  "${TMP_DIR}/invalid-trigger-policy-root-cause-name/obs.trigger_policy.v1.min.json"
+python3 - "${TMP_DIR}/invalid-trigger-policy-root-cause-name/obs.trigger_policy.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["rules"][0]["trigger_name"] = "cpu_root_cause_detected"
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "trigger name must be symptom/event oriented" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-trigger-policy-root-cause-name"
+
+mkdir -p "${TMP_DIR}/invalid-trigger-decision-missing-not-fired"
+cp "${REPO_ROOT}/tests/golden/obs.trigger_decision.v1.min.json" \
+  "${TMP_DIR}/invalid-trigger-decision-missing-not-fired/obs.trigger_decision.v1.min.json"
+python3 - "${TMP_DIR}/invalid-trigger-decision-missing-not-fired/obs.trigger_decision.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["decision"] = "not_fired"
+value["decision_reason"] = "threshold_not_crossed"
+value["coverage_state"] = "missing"
+value["coverage_ref"] = None
+value["incident_id"] = None
+value["trigger_event_ref"] = None
+value["budget_decision"] = "not_required"
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "missing/unavailable/unknown coverage must not be reported as not_fired" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-trigger-decision-missing-not-fired"
+
 mkdir -p "${TMP_DIR}/invalid-recorder-ref-segment"
 cp "${REPO_ROOT}/tests/golden/obs.recorder_incident_resolution.v1.min.json" \
   "${TMP_DIR}/invalid-recorder-ref-segment/obs.recorder_incident_resolution.v1.min.json"

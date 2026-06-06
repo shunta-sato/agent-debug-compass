@@ -17,6 +17,14 @@
     "trigger_time_mono_ns": {"type": "integer", "minimum": 0},
     "agent_contract": {"type": "string", "enum": ["preservation_reason_only"]},
     "root_cause_claim": {"type": "boolean", "enum": [false]},
+    "trigger_decision_ref": {
+      "type": "string",
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/trigger_decision\\.json$"
+    },
+    "coverage_ref": {
+      "type": "string",
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/coverage\\.json$"
+    },
     "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }

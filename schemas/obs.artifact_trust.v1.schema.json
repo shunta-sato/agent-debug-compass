@@ -35,6 +35,7 @@
         "recorder_marker_result",
         "loss_report",
         "trigger_event",
+        "trigger_decision",
         "dataset_manifest"
       ]
     },
