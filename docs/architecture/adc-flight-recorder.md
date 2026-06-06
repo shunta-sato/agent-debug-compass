@@ -2,8 +2,17 @@
 
 ## Status
 
-Draft architecture direction for the next platform phase after the executable
-Agent-facing contract gate.
+Architecture and current implementation notes for the Flight Recorder workstream.
+
+Implemented MVP capabilities include memory-backed volatile rolling retention,
+bounded frozen incident bundles, marker freeze, persistent incident budget
+admission, artifact refs, recorder overhead accounting, observation coverage,
+loss reports, dataset manifests, and coverage-aware symptom trigger decisions.
+
+Deferred capabilities include bounded post-window capture, disk-backed rolling
+rings, richer vertical collector profiles, dedicated recorder MCP tools,
+persistent trigger cooldown/hysteresis state, public dataset sharing policy, and
+live camera/inference target benchmarks.
 
 ## North Star
 

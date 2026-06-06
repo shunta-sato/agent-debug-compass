@@ -1,288 +1,71 @@
 # Agent Debug Compass
 
-Agent Debug Compass is an edge-first investigation operating layer for AI agents investigating target-device bugs.
+Agent Debug Compass is the evidence-governed debugging runtime for AI Agents
+operating on real edge devices.
 
-It turns local or same-LAN target observations into compact, bounded investigation context with evidence refs, data-quality gaps, falsifiable hypotheses, safe probe plans, artifact trust labels, and auditable probe results.
+It turns volatile target behavior into bounded evidence, artifact refs,
+`data_quality`, `artifact_trust`, observation coverage, Flight Recorder incident
+windows, and safe investigation contracts. It does not let Agents scrape shells
+blindly, ingest raw artifacts wholesale, or assert root cause prematurely.
 
-## What It Is
+## Why It Exists
 
-Agent Debug Compass is not a root-cause engine and not a generic metrics dashboard. It is the investigation layer between an AI Agent and an edge target.
+Direct-shell Agent debugging is a poor default for edge incidents:
 
-It helps an Agent answer:
+- the Agent often starts after the important Tx evidence window has disappeared;
+- raw logs and config can contain instruction-like target text;
+- missing signals are easy to misread as absence of a problem;
+- unsafe probes and ad hoc shell commands are hard to audit;
+- fleet and target identity blur quickly when evidence is copied around.
 
-- What target am I looking at?
-- What bounded evidence is already available?
-- Which refs should I open first?
-- What is missing or low quality?
-- Which hypotheses are still falsifiable, and what safe probe should reduce uncertainty next?
+ADC is the layer between an Agent and the target. It records observations,
+preserves bounded windows, labels trust, exposes missing evidence, and gives the
+Agent falsifiable investigation state instead of conclusions.
 
-The Agent-facing surface is `obs.*` over MCP, plus the `adc` CLI for local and scripted use.
+## What ADC Gives an Agent
+
+- `obs.agent_context.v1`: compact first-read context for a run or fleet.
+- `obs.symptom_context.v1`: symptom-first investigation state with typed facts,
+  missing fact IDs, route packs, falsifiable hypotheses, and safe probe plans.
+- `obs.ref_resolution.v1`: bounded `artifact://...` ref resolution with
+  `artifact_trust`, truncation, and `data_quality`.
+- Flight Recorder incident bundles: delayed-incident pre-window evidence,
+  `loss_report`, `coverage`, trigger decisions, dataset metadata, and recorder
+  overhead.
+- Safety contracts: capability reports, safety policy, probe plans, and
+  auditable probe results.
+
+ADC is not a root-cause engine. It records evidence and information debt so an
+Agent can investigate safely.
 
 ## Verified Environment
 
-Current public readiness is Raspberry Pi-first, not a broad hardware compatibility claim.
+Current public readiness is Raspberry Pi-first.
 
 Verified so far:
 
-- Raspberry Pi 5 as the local/controller machine.
-- Raspberry Pi 4 as a same-LAN target through target MCP/fleet flows.
+- Raspberry Pi 5 as local/controller machine.
+- Raspberry Pi 4 as same-LAN target through target MCP/fleet flows.
 - Linux `aarch64` userspace with rootless local observation paths.
 - Rootless target MCP install into a user's home directory.
 
-Not yet verified:
+Not yet broadly verified:
 
 - Jetson, QCOM/Snapdragon, x86 edge boxes, or non-Linux targets.
 - Jetson-specific GPU/power/thermal collectors.
-- Broad distribution/kernel compatibility beyond the tested Raspberry Pi OS/Linux setup.
+- Broad distribution/kernel compatibility beyond the tested Raspberry Pi
+  OS/Linux setup.
 
-The code is designed so unsupported capabilities become `data_quality` gaps where possible, but this release should be treated as validated only on the Raspberry Pi 5 + Raspberry Pi 4 lab setup above.
+Unsupported capabilities should become explicit `data_quality` gaps where
+possible. Treat this release as validated only on the Raspberry Pi lab path
+above unless you run your own target smoke.
 
-## Concrete Agent Workflows
-
-Agent Debug Compass does not ask an Agent to scrape `/proc`, parse logs, and decide which file to open first. It packages observations into a small context object that tells the Agent:
-
-- the target/run/fleet identity,
-- the highest-value refs to open next,
-- the known facts and missing facts,
-- the data-quality gaps,
-- the next safe probe options.
-
-The output is intentionally not a conclusion. It is an investigation starting point.
-
-### 1. Start From a Symptom
-
-Run a bounded observation, then compile it around the symptom:
-
-```bash
-adc observe --run-id R-APP --duration-sec 5 \
-  --log-file app.log \
-  --domain-events-file events.jsonl \
-  --config-file app.conf \
-  --service-name my-service
-
-adc investigate bug --run-id R-APP --symptom "latency timeout" --service-name my-service
-```
-
-The Agent receives an `obs.symptom_context.v1` object like this, abridged:
-
-```json
-{
-  "schema_version": "obs.symptom_context.v1",
-  "symptom": {"normalized": "latency_timeout"},
-  "target_summary": {"target_ids": ["local"], "captured_count": 1, "failed_count": 0},
-  "agent_context": {
-    "schema_version": "obs.agent_context.v1",
-    "derived_fact_count": 15,
-    "recommended_refs": [
-      {"label": "log", "raw_ref": "artifact://raw/app.log"},
-      {"label": "journald", "raw_ref": "artifact://raw/journald.jsonl"},
-      {"label": "domain_event", "raw_ref": "artifact://raw/domain_events.jsonl"}
-    ]
-  },
-  "investigation_route": {
-    "steps": [
-      {
-        "step_id": "IR001",
-        "title": "Correlate service state with observed signals",
-        "refs": [
-          {"label": "service_state", "raw_ref": "artifact://raw/service_state.json"}
-        ],
-        "branch_conditions": [
-          {"if_observed": "service availability is unavailable or state is unknown"},
-          {"if_observed": "service is available and log/domain refs exist"}
-        ],
-        "cause_neutral": true
-      }
-    ]
-  },
-  "hypothesis_set": {
-    "schema_version": "obs.hypothesis_set.v1",
-    "hypotheses": [
-      {
-        "hypothesis_id": "H001",
-        "status": "needs_evidence",
-        "claim_boundary": "hypothesis_only",
-        "missing_evidence": ["process.runqueue_latency"],
-        "next_discriminating_probes": ["probe.baseline_observe"]
-      }
-    ]
-  },
-  "probe_plan": {
-    "schema_version": "obs.probe_plan.v1",
-    "candidate_probes": [
-      {
-        "probe_id": "probe.baseline_observe",
-        "safety_status": "allowed",
-        "cause_neutral": true
-      }
-    ]
-  }
-}
-```
-
-How an Agent uses it:
-
-1. Check `data_quality` first. If evidence is missing or permission-limited, repair that before guessing.
-2. Open only the recommended refs, for example `artifact://raw/app.log` or `artifact://raw/service_state.json`, through `obs.get_ref` / `obs.get_raw_slice`.
-3. Use `hypothesis_set` as falsifiable investigation state, not as a conclusion.
-4. Follow the route step and branch conditions, then call `obs.continue_investigation` with the opened refs.
-5. Choose a probe from `probe_plan` only when it reduces explicit uncertainty and stays within `safety_policy`.
-
-### 2. Compare Before and After a Reproduction
-
-Capture the target before and after a workload that you run outside ADC:
-
-```bash
-adc snapshot --run-id R-BEFORE
-# run your repro or workload outside ADC
-adc snapshot --run-id R-AFTER
-adc compare --before R-BEFORE --after R-AFTER
-```
-
-### 3. Preserve a Delayed Incident Window
-
-Flight Recorder keeps an ultra-light memory ring in `adc-targetd`. A marker or
-symptom trigger materializes a bounded incident bundle with retained samples,
-loss semantics, and dataset-ready refs.
-
-```bash
-adc arm --profile pi5_basic
-adc recorder mark --symptom "camera frame drop observed around now"
-adc-targetd --service-for-ms 1000
-adc recorder incidents
-adc recorder incident get --incident-id INC-marker-...
-adc investigate ref --ref artifact://recorder/incidents/INC-marker-.../loss_report.json
-adc recorder export-dataset --selector profile=camera_inference_degradation
-```
-
-The recorder does not claim a cause. It preserves the Tx-adjacent evidence that
-would be unavailable to an Agent that starts direct shell inspection at Ty.
-Recorder incident outputs use `artifact://recorder/...` refs by default; those
-refs are resolved through bounded ref surfaces with artifact trust and
-data_quality rather than raw filesystem paths.
-
-The output contains bounded deltas and refs:
-
-```json
-{
-  "before_run_id": "R-BEFORE",
-  "after_run_id": "R-AFTER",
-  "profile_match": true,
-  "metric_deltas": {
-    "cpu.total_jiffies": {"delta": 89.0, "unit": "jiffies"},
-    "memory.mem_available_kb": {"delta": -1040.0, "unit": "KiB"}
-  },
-  "raw_refs": {
-    "before_timeline": "artifact://runs/R-BEFORE/timeline.jsonl",
-    "after_timeline": "artifact://runs/R-AFTER/timeline.jsonl"
-  },
-  "data_quality": {"notes": ["profile ids match"]}
-}
-```
-
-How an Agent uses it:
-
-1. Trust the comparison only if `profile_match` and `data_quality` are acceptable.
-2. Rank the investigation by `metric_deltas` instead of reading both raw timelines in full.
-3. Open the before/after refs only for the metrics that moved.
-
-### 3. Investigate a Service Without Dumping Journals
-
-Ask for a fixed, bounded service pack:
-
-```bash
-adc investigate service ssh
-```
-
-The output is a cause-neutral service investigation:
-
-```json
-{
-  "schema_version": "obs.service_investigation.v1",
-  "service_name": "ssh",
-  "service_state": {"availability": "available", "active_state": "active"},
-  "journal_leads": [
-    {"severity_hint": "warning", "message": "..."},
-    {"severity_hint": "error", "message": "..."}
-  ],
-  "raw_refs": {
-    "service_state": "artifact://service_investigations/ssh/service_state.json",
-    "journal_leads": "artifact://service_investigations/ssh/journal_leads.json"
-  },
-  "next_probe_options": [
-    {"probe_id": "observe_service_window", "required_privilege": "none"}
-  ],
-  "data_quality": {"missing": []}
-}
-```
-
-How an Agent uses it:
-
-1. Read service availability and journal lead counts without ingesting the whole journal.
-2. Open `journal_leads` or `service_state` refs when the short pack is insufficient.
-3. Select `observe_service_window` if resource series must be correlated with service logs.
-
-### 4. Observe a Same-LAN Fleet, Including Partial Failure
-
-Discover or enroll targets, then run a fleet observation:
-
-```bash
-adc fleet discover --cidr 198.51.100.0/24 --write-inventory /tmp/adc-targets.yaml
-adc fleet observe --inventory /tmp/adc-targets.yaml --fleet-run-id F-OBSERVE --duration-sec 5
-adc agent-context --fleet-run-id F-OBSERVE --format json
-```
-
-The fleet context separates target identities and preserves partial success:
-
-```json
-{
-  "schema_version": "obs.agent_context.fleet.v1",
-  "fleet_run_id": "F-OBSERVE",
-  "target_count": 3,
-  "captured_count": 2,
-  "failed_count": 1,
-  "target_matrix": [
-    {"target_id": "pi-local", "status": "captured", "evidence_ref": "artifact://runs/.../evidence_index.yaml"},
-    {"target_id": "pi-remote", "status": "captured", "evidence_ref": "artifact://fleet_runs/.../evidence_index.yaml"},
-    {
-      "target_id": "pi-denied",
-      "status": "permission_denied",
-      "data_quality": {"missing": ["permission_denied: obs.observe command failed"]}
-    }
-  ]
-}
-```
-
-How an Agent uses it:
-
-1. Continue with the two captured targets instead of discarding the whole fleet run.
-2. Treat `permission_denied` as evidence debt, not as a hidden failure.
-3. Open per-target `evidence_ref` values independently so target identity, profile, and artifacts never blur together.
-
-Managed MCP can replace SSH for fleet targets:
-
-```bash
-# on the target
-adc-mcp --target-mode --managed-listen 0.0.0.0:8765 --managed-token-file /path/token
-
-# on the controller
-adc fleet enroll --target-id pi-target --transport managed_mcp --host pi-target.local --port 8765 --auth-token-file /path/token
-```
-
-The Agent still receives the same fleet evidence shape, but the target transport is `managed_mcp` and target mode hides controller-only tools.
-
-## Quick Start From Source
-
-This path is for trying Agent Debug Compass from a source checkout. For a target install, use the release bundle or target setup guide.
+## 3-Minute Source Demo
 
 Preconditions:
 
-- Linux on `aarch64`; Raspberry Pi 5 is the primary verified host.
-- Rust toolchain and Cargo installed.
-- `git`, `bash`, and standard Linux `/proc` files available.
-- A writable `ADC_HOME`; root is not required for the default commands below.
-- Optional for richer service evidence: `systemctl` / `journalctl` available to the current user.
-- Optional for same-LAN target tests: another Raspberry Pi reachable through SSH or managed MCP enrollment.
+- Linux with Rust/Cargo, `git`, `bash`, and standard `/proc` files.
+- Writable `ADC_HOME`; root is not required for these commands.
 
 From the repository root:
 
@@ -294,52 +77,93 @@ cargo run -q -p adc -- observe --run-id R-DEMO --duration-sec 5 --interval-ms 50
 cargo run -q -p adc -- investigate bug --run-id R-DEMO --symptom "latency timeout"
 ```
 
-The last command returns `obs.symptom_context.v1`: normalized symptom, selected route packs, typed facts, missing fact IDs, recommended refs, falsifiable hypotheses, safe probe plans, safety policy, and `data_quality`.
+The final command returns `obs.symptom_context.v1`: normalized symptom, selected
+route packs, typed facts, missing fact IDs, ranked refs, falsifiable hypotheses,
+safe probe candidates, safety policy, and `data_quality`.
 
-For target installation on another Raspberry Pi, start with [docs/04_target_setup.md](docs/04_target_setup.md). For public release packaging, see the release bundle section below.
+## Flight Recorder Demo
 
-## Main Commands
+Flight Recorder keeps an ultra-light in-memory ring in `adc-targetd`. A marker
+or symptom trigger materializes a bounded incident bundle with retained
+pre-window samples, coverage, loss semantics, artifact trust, trigger decisions,
+and dataset-ready refs.
 
 ```bash
-# One bounded local observation.
-ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- observe --run-id R-LOCAL --duration-sec 10 --interval-ms 500
-
-# Agent-ready context for an existing run.
-ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- agent-context --run-id R-LOCAL
-
-# Symptom-first investigation context.
-ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- investigate bug --run-id R-LOCAL --symptom "memory growth"
-
-# Fixed, bounded Linux service evidence.
-ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- investigate service ssh
-
-# Same-LAN candidate discovery from existing neighbor data.
-ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- fleet discover --cidr 192.0.2.0/24 --write-inventory /tmp/adc-targets.yaml
-
-# Safety-aware target capabilities.
-ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- capabilities
-
-# Record a failed probe result without executing target commands.
-ADC_HOME="$PWD/.agent-debug-compass" \
-  cargo run -q -p adc -- investigate probe-result missing-capability \
-    --probe-plan-id PP001 \
-    --probe-id probe.scheduler_snapshot \
-    --missing-fact process.runqueue_latency \
-    --hypothesis-id H001
+export ADC_HOME="$PWD/.agent-debug-compass"
+cargo run -q -p adc -- arm --profile pi5_basic
+cargo run -q -p adc -- recorder mark --symptom "camera frame drop observed around now"
+cargo run -q -p adc-targetd -- --service-for-ms 1000
+cargo run -q -p adc -- recorder incidents
+cargo run -q -p adc -- recorder incident get --incident-id INC-marker-...
+cargo run -q -p adc -- investigate ref --ref artifact://recorder/incidents/INC-marker-.../coverage.json
 ```
+
+Current MVP behavior:
+
+- continuous retention is memory-backed and volatile;
+- frozen incidents are bounded artifact bundles;
+- current runtime freezes retained pre-window evidence only;
+- `post_window_ms` exists for forward compatibility and is `0`;
+- recorder refs are `artifact://recorder/...`, not raw filesystem paths;
+- trigger decisions are symptom/event preservation decisions, not cause claims.
+
+## Core Workflows
+
+### Symptom-First Investigation
+
+```bash
+adc observe --run-id R-APP --duration-sec 5 \
+  --log-file app.log \
+  --domain-events-file events.jsonl \
+  --config-file app.conf \
+  --service-name my-service
+
+adc investigate bug --run-id R-APP --symptom "latency timeout" --service-name my-service
+```
+
+Use the result by checking `data_quality`, opening only recommended refs through
+`obs.get_ref` / `adc investigate ref`, and treating hypotheses as falsifiable
+state, not conclusions.
+
+### Before/After Comparison
+
+```bash
+adc snapshot --run-id R-BEFORE
+# run your repro or workload outside ADC
+adc snapshot --run-id R-AFTER
+adc compare --before R-BEFORE --after R-AFTER
+```
+
+The comparison returns bounded metric deltas and refs to the before/after
+artifacts. The Agent should trust the comparison only if `profile_match` and
+`data_quality` are acceptable.
+
+### Bounded Service Investigation
+
+```bash
+adc investigate service ssh
+```
+
+This returns service state, process/port summary, bounded journal leads, raw
+refs, next probes, and `data_quality` without exposing arbitrary shell.
+
+### Same-LAN Fleet Observation
+
+```bash
+adc fleet discover --cidr 198.51.100.0/24 --write-inventory /tmp/adc-targets.yaml
+adc fleet observe --inventory /tmp/adc-targets.yaml --fleet-run-id F-OBSERVE --duration-sec 5
+adc agent-context --fleet-run-id F-OBSERVE --format json
+```
+
+Fleet context preserves target identity and partial success. Permission denied
+or unreachable targets become per-target `data_quality`, not hidden failures.
 
 ## Binaries
 
 | Binary | Role |
 |---|---|
-| `adc` | CLI for capture, evidence, investigation, fleet, and release workflows. |
-| `adc-targetd` | Target-local daemon mode for armed profiles and trigger capture. |
+| `adc` | CLI for capture, evidence, investigation, recorder, fleet, and release workflows. |
+| `adc-targetd` | Target-local service mode for armed profiles, Flight Recorder ring, markers, and trigger capture. |
 | `adc-mcp` | MCP server/listener exposing bounded `obs.*` tools. |
 | `adc-priv-helper` | Optional allowlisted helper for explicit privileged smoke paths. |
 | `adc-workload` | Synthetic workload generator used by tests and demos. |
@@ -347,90 +171,83 @@ ADC_HOME="$PWD/.agent-debug-compass" \
 
 ## Agent Surface
 
-The first-read Agent surface remains small and cause-neutral:
+The Agent-facing surface is `obs.*` over MCP plus the `adc` CLI for local and
+scripted use.
 
-- `obs.agent_context.v1`: first-read target/run/fleet context.
-- `obs.symptom_context.v1`: symptom-to-context compiler output.
-- `obs.investigation_start.v1`: compact route start pack.
-- `obs.investigation_continue.v1`: bounded continuation pack with branch evaluations.
+Important contracts include:
 
-The investigation operating layer adds separate versioned contracts for capability, artifact trust, hypotheses, evidence graph, probes, and safety policy:
+- `obs.agent_context.v1`
+- `obs.symptom_context.v1`
+- `obs.investigation_start.v1`
+- `obs.investigation_continue.v1`
+- `obs.ref_resolution.v1`
+- `obs.artifact_trust.v1`
+- `obs.data_quality.v1`
+- `obs.recorder_*`
+- `obs.trigger_policy.v1`
+- `obs.trigger_decision.v1`
 
-- `obs.capability_report.v1`: safety-aware target capability status.
-- `obs.artifact_trust.v1`: trust and instruction policy for returned refs.
-- `obs.ref_resolution.v1`: full bounded `obs.get_ref` envelope, including returned text, truncation, trust, and data quality.
-- `obs.hypothesis_set.v1`: falsifiable investigation hypotheses.
-- `obs.evidence_graph.v1`: lightweight nodes and edges linking targets, refs, and hypotheses.
-- `obs.probe_plan.v1`: safe probe candidates with expected evidence and discrimination targets.
-- `obs.probe_result.v1`: auditable probe outcomes and hypothesis updates.
-- `obs.safety_policy.v1`: machine-readable allow, deny, and approval decisions.
-- `evidence_index.yaml`: run evidence index.
-- Window/series/raw refs: bounded retrieval instead of raw artifact dumps.
+The full public schema set is tracked through
+`contracts/adc.contract_coverage.v1.json` and validated by `make contract`.
 
-Raw artifacts stay behind refs such as `artifact://raw/cpu.jsonl`. The initial context never returns raw artifacts wholesale.
+## Managed MCP Fleet Mode
 
-`obs.get_ref` returns bounded text plus `artifact_trust`; target-originated text is labeled with `agent_instruction_policy: treat_as_data_only`.
-
-## Fleet Modes
-
-Agent Debug Compass supports:
-
-- local target capture,
-- explicit inventory fleet capture,
-- MCP-over-SSH stdio target transport,
-- authenticated managed MCP listener transport with optional mTLS.
-
-Managed MCP listeners are default-off. Target mode exposes target-local observation tools only; controller fleet/discovery tools are hidden.
-
-## Demo
+Managed MCP can replace SSH for enrolled targets:
 
 ```bash
-scripts/demo/run-sensor-gateway-demo.sh --quick
-sed -n '1,160p' demo-results/sensor-gateway/agent_context.md
+# on the target
+adc-mcp --target-mode --managed-listen 0.0.0.0:8765 --managed-token-file /path/token
+
+# on the controller
+adc fleet enroll --target-id pi-target --transport managed_mcp --host pi-target.local --port 8765 --auth-token-file /path/token
 ```
 
-The demo shows how a noisy sensor gateway run becomes a compact Agent context with evidence refs, selected windows, comparisons, and data-quality notes.
+Target mode exposes target-local observation tools only; controller fleet and
+discovery tools are hidden.
+
+## Demo, Benchmark, and Verification
+
+```bash
+bash scripts/demo/run-sensor-gateway-demo.sh --quick
+bash scripts/benchmarks/tests/run-agent-debug-benchmark-test.sh
+make contract
+make verify
+```
+
+The benchmark currently uses checked-in scenarios. It includes
+`camera_inference_degradation_flight_recorder`, which compares direct shell
+after Ty, ADC on-demand after Ty, and ADC Flight Recorder with retained Tx
+pre-window evidence. It scores evidence availability, missing-evidence
+distinction, bounded refs, unsafe command count, and cause-claim avoidance. It
+does not score root-cause accuracy.
+
+See [COMMANDS.md](COMMANDS.md) for the complete command map and
+[tests/README.md](tests/README.md) for test taxonomy.
+
+## Current State and Roadmap
+
+- Current implementation truth: [docs/00_current_state.md](docs/00_current_state.md)
+- Flight Recorder architecture: [docs/architecture/adc-flight-recorder.md](docs/architecture/adc-flight-recorder.md)
+- Investigation operating layer architecture:
+  [docs/architecture/agent-investigation-operating-layer.md](docs/architecture/agent-investigation-operating-layer.md)
+- Target setup: [docs/04_target_setup.md](docs/04_target_setup.md)
+- Security checks: [docs/05_security_checks.md](docs/05_security_checks.md)
+- Security posture: [SECURITY.md](SECURITY.md), [docs/security.md](docs/security.md)
 
 ## Release Bundle
 
 ```bash
-scripts/package/build-release-bundle.sh --force
+bash scripts/package/build-release-bundle.sh --force
 ls dist/agent-debug-compass-0.1.0-*-linux.tar.gz
 ```
 
-Release bundles contain `bin/adc`, `bin/adc-targetd`, `bin/adc-mcp`, scripts, docs, profiles, packaging, and optional kernel probe source.
-
-## Security Posture
-
-- No arbitrary shell tool is exposed to Agents.
-- Rootless operation is the default.
-- Managed MCP requires an explicit listener, bearer token, and optional mTLS.
-- Raw artifacts are ref-only in first-read context.
-- Unreachable targets, permission gaps, collector failures, truncation, and throttling are recorded in `data_quality`.
-
-See [SECURITY.md](SECURITY.md) and [docs/security.md](docs/security.md).
-
-## Verification
-
-Before release:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test -q --workspace
-scripts/demo/tests/run-sensor-gateway-demo-test.sh
-scripts/e2e/run-e2e.sh
-PATH="$HOME/.cargo/bin:$PATH" scripts/security/run-rust-security-checks.sh
-scripts/e2e/run-agent-quality-dogfood.sh
-python3 -m pip install -r scripts/contract/requirements.txt
-make contract
-scripts/benchmarks/tests/run-agent-debug-benchmark-test.sh
-```
+Release bundles contain binaries, scripts, docs, profiles, packaging, benchmark
+scenarios, and optional kernel probe source.
 
 For public export:
 
 ```bash
-scripts/package/create-public-tree.sh --output /tmp/agent-debug-compass-public --force --init-git
+bash scripts/package/create-public-tree.sh --output /tmp/agent-debug-compass-public --force --init-git
 ```
 
-Push the generated clean tree to the public `agent-debug-compass` repository. Do not push this private development history.
+Do not push private development history or local generated result directories.
