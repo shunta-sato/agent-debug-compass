@@ -1,58 +1,99 @@
 # Current State
 
-Agent Debug Compass is a v2 evidence-first Agent observation context layer for Raspberry Pi 5 and small fleet targets.
+Agent Debug Compass is an evidence-governed debugging runtime for AI Agents on
+local, Raspberry Pi-first, and same-LAN edge targets.
 
-## Current Contract
+This file is the implementation truth table. It separates what is implemented,
+what is partial, what is hardware-optional, and what remains future work.
 
-- The core output is `evidence_index.yaml`.
-- Agent-facing retrieval is layered: Agent context pack, evidence index, bounded windows or series, typed artifact refs, and explicit raw slices.
+## Contract Boundary
+
+- ADC records observations, information debt, coverage, loss, trust, and safe
+  next investigation context.
+- ADC does not infer or assert root cause.
+- Raw artifacts are not returned wholesale as initial Agent context.
+- Agent-facing retrieval is layered: Agent context, evidence index, bounded
+  windows or series, typed `artifact://...` refs, and explicit bounded raw
+  slices.
 - MCP tools and resources use the `obs.*` / `obs://` namespace.
-- CLI workflows use `adc doctor`, `observe`, `agent-context`, `evidence ...`, `investigate bug`, `investigate route-packs`, `investigate start`, `investigate continue`, `investigate session`, `investigate cleanup-sessions`, `investigate service`, `target capture`, `fleet discover/init/enroll/targets/preflight/observe/capture/investigate service`, `compare`, and `next-probe`.
-- Raw artifacts are never returned wholesale as initial Agent context.
-- Agent Debug Compass records observations and information debt; it does not infer causes.
+- New public Agent-facing contracts are expected to have JSON Schema, golden
+  fixtures, generated output validation where surfaced, enum vocabulary,
+  `data_quality` / `artifact_trust` semantics, and coverage manifest entries.
 
-## Completed Baseline
+## Implementation Truth Table
 
-- Snapshot and bounded capture generate evidence indexes, timelines, windows, raw artifacts, overhead reports, and manifests.
-- Local target capture, same-network discovery, explicit-inventory fleet snapshot, and bounded fleet capture are implemented.
-- Fleet transport supports local targets, target MCP endpoints over SSH stdio, and explicit authenticated `managed_mcp` target listeners through bounded `obs.*` MCP tool calls. Managed MCP reloads its token file per request for restart-free rotation, supports optional mutual TLS, handles each connection independently so slow clients do not block other Agent requests, has a rootless systemd user-service installer for supervised target listeners, provides an enrollment kit generator plus `fleet enroll-kit`, and includes a guarded remote provisioner that uses SSH only for first-time rootless target bootstrap.
-- Per-target evidence keeps `target_id`, `fleet_run_id`, profile, capability refs where available, and artifact refs separated.
-- The sensor gateway demo produces bounded Agent context from evidence, windows, series, comparisons, and raw refs.
-- Agent context packs can now be generated directly from run or fleet evidence, including target dossier, representative raw-series-derived stats, salience-ranked refs, cause-neutral Agent playbook, machine-readable investigation route, runtime snapshots, FD/thread and kernel optional-probe snapshots, optional log/domain/config/service/interop facts, overhead, next probes, budget reduction, and OpenMetrics/OTLP/journald/Perfetto summary export.
-- Symptom-first investigation is available through CLI `adc investigate bug` and MCP `obs.investigate_bug`; it returns `obs.symptom_context.v1` with normalized symptom, compiled selected/rejected route packs, typed facts, explicit missing fact IDs, ranked refs, declarative safe probe packs, context budget, and persisted `symptom_context.json` / `compiled_route.json` / `fact_gap_report.json` without cause inference.
-- A fixed cause-neutral service investigation pack is available through CLI `adc investigate service <name>` and MCP `obs.investigate_service`; it returns service state, process/port summary, bounded journal leads with recency/window summary, raw refs, data_quality, and next probes without exposing arbitrary shell. `observe --service-name` reuses the same bounded service state path, and unavailable/permission-denied data is explicit instead of encoded as zero. Service investigation refs and Flight Recorder `artifact://recorder/...` refs are resolvable through CLI `adc investigate ref --ref ...` and MCP `obs.get_ref` without a `run_id`.
-- Fleet service investigation is available through CLI `adc fleet investigate service <name>` and controller MCP `obs.fleet_investigate_service`; it collects per-target bounded service packs over local, MCP-over-SSH, or managed MCP transports while preserving partial success and per-target `data_quality`.
-- One-shot investigation start is available through CLI `adc investigate start` and MCP `obs.start_investigation`; it returns `obs.investigation_start.v1` with compact Agent context plus `obs.investigation_route.v1` steps, expected answer shape, typed branch predicates, stop conditions, bounded refs, target IDs, and route-level `data_quality`. Full context remains available through `agent-context` / `obs.get_agent_context`.
-- Adaptive investigation continuation is available through CLI `adc investigate continue` and MCP `obs.continue_investigation`; it opens selected route refs through bounded resolvers, extracts typed evidence facts, evaluates typed route conditions into `matched` / `not_matched` / `unknown` with missing fact IDs, returns `obs.investigation_continue.v1` with branch evaluations and ranked next actions, persists `investigation_sessions/<session_id>.json` plus `<session_id>.state.json`, and keeps raw content out of the response. Session state is readable through CLI `investigate session` and MCP `obs.get_investigation_session`; session cleanup is dry-run-first and supports age-based execution through `investigate cleanup-sessions`. Fleet service starts also persist `fleet_semantic_diff.json` with typed service/process/port/journal/data_quality diff fields and target-level quality classes.
-- The route pack registry is available through CLI `adc investigate route-packs` and MCP `obs.list_route_packs`; it currently covers service health, latency/timeouts, memory growth, CPU saturation, network degradation, disk/IO pressure, config/deploy drift, and thermal/power edge degradation without adding cause inference.
-- `evidence ref` and MCP `obs.get_ref` resolve typed refs for raw, window, manifest, evidence, timeline, context, and service investigation artifacts without forcing Agents to know which lower-level getter accepts each ref kind.
-- Fleet context now supports discovery inventory writing, `latest` aliases, deduped remediation hints, and Markdown target matrices for partial-success investigation.
-- Fleet preflight now performs per-target readiness checks. Remote targets use MCP-over-SSH stdio calls to `obs.status`, `obs.doctor`, and `obs.preflight`; inventories may set `mcp_server_path` for rootless user-local target installs.
-- Managed fleet registry supports rootless `fleet init`, `fleet invite`, `fleet enroll`, `fleet targets`, and selector-based `fleet preflight/snapshot/observe --selector all|enrolled|target=<id>|tag=<tag>|transport=<transport>` so Agents do not need to pass a hand-written inventory on every run.
-- Target MCP `--target-mode` exposes only target-local observation tools/resources; controller fleet/discovery tools and fleet resource templates are hidden from enrolled targets.
-- Fleet Agent context now includes per-target summaries with event counts, source counts, evidence refs, target dossiers, salience-ranked top leads, grouped failure classes, action-grade next steps, and target data_quality before an Agent opens lower-level refs.
-- Raspberry Pi 5 release-binary smoke and overhead measurement are scripted under `scripts/e2e/target/run-pi5-release-smoke.sh`.
-- Rootless target MCP bootstrap is scripted under `scripts/install/install-target-mcp-binaries.sh`, and reusable target MCP fleet smoke is scripted under `scripts/e2e/target/run-target-mcp-fleet-smoke.sh` with inventory-derived expected target counts.
-- Reusable Agent investigation quality dogfood is scripted under `scripts/e2e/run-agent-quality-dogfood.sh`; it emits `obs.agent_quality_scorecard.v2` plus `STRICT_DOGFOOD_REPORT.md` and scores symptom-first context compilation, direct-shell comparison, typed routes, session resume, managed MCP, degraded fleet, budget, and safety/privacy assertions.
-- Fleet Agent context includes cross-target captured/failed/event/source totals without making cause claims.
-- Target MCP-over-SSH fleet smoke is exercised from the Pi 5 controller to a separate Raspberry Pi target using rootless user-local `mcp_server_path` install.
-- Dependency/security/supply-chain checks are scripted under `scripts/security/`.
+| Area | Status | CLI | MCP | Contracts | Tests / gates | Known limits |
+|---|---|---|---|---|---|---|
+| Local snapshot and bounded capture | Implemented | `adc snapshot`, `adc observe`, `adc target capture` | `obs.snapshot`, `obs.observe` where surfaced | `obs.evidence_index.v2`, event/timeline/window refs | workspace tests, demo, `make verify` | Linux `/proc`-style targets; no broad non-Linux claim |
+| Evidence retrieval | Implemented | `adc evidence get/window/series/raw-slice`, `adc investigate ref` | `obs.get_ref`, resource refs | `obs.ref_resolution.v1`, `obs.artifact_trust.v1` | ref resolver tests, contract fixtures | Returned text is bounded/truncated; raw full dumps stay behind refs |
+| Agent context | Implemented | `adc agent-context` | `obs.get_agent_context` | `obs.agent_context.v1` | CLI/MCP generated fixtures, agent context tests | Large implementation module remains a maintainability follow-up |
+| Symptom-first investigation | Implemented | `adc investigate bug` | `obs.investigate_bug` | `obs.symptom_context.v1`, hypotheses, probe plan, safety policy | contract/integration tests, dogfood | Provides falsifiable investigation state, not a conclusion |
+| Investigation start / continue / sessions | Implemented | `adc investigate start/continue/session/cleanup-sessions` | `obs.start_investigation`, `obs.continue_investigation`, `obs.get_investigation_session` | `obs.investigation_start.v1`, `obs.investigation_continue.v1` | integration tests, generated MCP validation | Cleanup is dry-run-first; raw content stays behind refs |
+| Service investigation | Implemented | `adc investigate service <name>`, `observe --service-name` | `obs.investigate_service` | `obs.service_investigation.v1` surface through generated outputs | service investigation tests | Depends on available service/journal tooling and user permissions |
+| Route pack registry | Implemented | `adc investigate route-packs` | `obs.list_route_packs` | route pack outputs in investigation contracts | route pack tests | Cause-neutral route packs only |
+| Probe result recording | Implemented for non-executing outcomes | `adc investigate probe-result missing-capability`, `policy-denied` | `obs.record_probe_result` | `obs.probe_result.v1` | contract tests, MCP tests | Recording-only; no probe execution engine |
+| Fleet discovery and explicit inventory | Implemented | `adc fleet discover`, inventory-based observe/capture/preflight | controller fleet tools | fleet evidence/context contracts | fleet tests, dogfood | Same-LAN/rootless paths verified; not broad network scanner |
+| Managed MCP target transport | Implemented | `adc fleet init/invite/enroll/targets/preflight/observe/capture` | managed target listener and controller tools | managed fleet outputs | managed MCP tests, e2e scripts | Listener is explicit/default-off; token/mTLS setup required |
+| Target MCP mode | Implemented | `adc-mcp --target-mode` | target-local `obs.*` subset | MCP tool/resource list | MCP tool list tests | Controller fleet/discovery tools hidden in target mode |
+| Flight Recorder memory ring | Implemented MVP | `adc arm`, `adc-targetd --service*`, `adc recorder status` | status via existing ref/MCP resolver surfaces; dedicated recorder MCP tools deferred | `obs.recorder_status.v1`, buffer/budget/overhead contracts | recorder tests, service tests, `make contract` | Memory-backed and volatile; no disk-backed rolling ring |
+| Flight Recorder marker freeze | Implemented MVP | `adc recorder mark`, `incidents`, `incident get` | dedicated recorder MCP tools deferred | marker, marker result, incident, frozen window, loss report | recorder/daemon tests | Current runtime freezes retained pre-window evidence only; `post_window_ms=0` |
+| Flight Recorder artifact refs | Implemented | `adc investigate ref --ref artifact://recorder/...` | `obs.get_ref` | `obs.ref_resolution.v1`, `obs.artifact_trust.v1` | resolver tests, generated fixtures | Default Agent outputs avoid raw local filesystem paths |
+| Observation coverage / expected signals | Implemented MVP | incident `coverage_ref` via recorder incident resolution and ref resolver | `obs.get_ref` for `coverage.json` | `obs.recorder_observation_coverage.v1` | recorder coverage tests, benchmark | Expected signal model is profile/static mapping; richer device capabilities are future work |
+| Recorder persistent incident budget | Implemented | daemon admission and refused marker/trigger outputs | via generated/ref surfaces | `obs.recorder_budget_status.v1`, freeze decision | service tests | No retention sweeper/deletion policy yet |
+| Coverage-aware trigger decisions | Implemented v1 | daemon trigger path, incident/scoped trigger decision refs | `obs.get_ref` for trigger decision refs | `obs.trigger_policy.v1`, `obs.trigger_decision.v1`, trigger event | trigger tests, service tests, contract validation | Cooldown/hysteresis state is service-run scoped; correlation/vertical trigger policy deferred |
+| Dataset manifest export | Implemented MVP | `adc recorder export-dataset` | dedicated recorder MCP tools deferred | `obs.dataset_manifest.v1` | contract fixtures, CLI generated outputs | Local benchmark/regression export only; external sharing/redaction policy is future work |
+| Agent debugging benchmark | Implemented static benchmark | `scripts/benchmarks/run-agent-debug-benchmark.py` | not applicable | `obs.agent_debug_benchmark_report.v1` output | benchmark test | Static checked-in scenarios; live generated benchmark remains future work |
+| Agent quality dogfood | Implemented local script | `scripts/e2e/run-agent-quality-dogfood.sh` | exercises CLI/MCP surfaces | `obs.agent_quality_dogfood.v2` output | dogfood script | Local synthetic dogfood, not a substitute for real target smoke |
+| Security / supply-chain checks | Implemented scripts | `make security-check`, `scripts/security/run-rust-security-checks.sh` | not applicable | reports under `reports/security` | security script tests | Optional `cargo geiger` may fail to produce a usable report; existing allowed audit warnings are documented |
+| Raspberry Pi target smoke | Scripted / hardware-optional | `scripts/e2e/target/*.sh` | target MCP/fleet flows | smoke outputs | optional target smoke scripts | Requires hardware and setup; not required for local default verification |
+| Optional privileged perf/ftrace/KO | Experimental / hardware-optional | install/smoke scripts | not default MCP surface | capability reports where available | optional smoke scripts | Not required for rootless default operation |
+| Recorder MCP dedicated tools | Deferred | not yet dedicated | future `obs.recorder_*` tools | existing contracts already present | future tests | Use CLI/ref resolver today; dedicated MCP recorder surface is future work |
+| Bounded post-window capture | Deferred | `post_window_ms` field exists | not implemented | frozen window contract forward-compatible | recorder tests assert current semantics | Current MVP is pre-window only |
+| Disk-backed rolling ring | Deferred | none | none | storage status notes | not implemented | Requires write-wear and durability design |
+| Live camera/inference vertical | Deferred | benchmark scenario exists | none | benchmark scenario JSON | static benchmark | Needs live workload/profile and target smoke path |
 
-## Remaining Platform Work
+## Verified Environment
 
-- No blocking v2 platform work remains before starting Flight Recorder planning for the default Agent-first local/same-LAN managed MCP path. Future non-blocking UX improvements can add richer batch provisioning, but the current working transport is explicit bearer-token HTTP JSON-RPC MCP with optional mutual TLS, enrollment kit automation, guarded SSH-carried rootless provisioning, SSH trust-policy controls, best-effort host-key fingerprint reporting, and no listener by default.
-- Optional privileged capability smoke for perf/ftrace/KO remains available through explicit target smoke scripts; it is not required for default non-root operation.
+Verified so far:
 
-## Verification Baseline
+- Raspberry Pi 5 as local/controller machine.
+- Raspberry Pi 4 as same-LAN target through target MCP/fleet flows.
+- Linux `aarch64` userspace with rootless local observation paths.
+- Rootless target MCP install into a user's home directory.
 
-Run these before handoff or release:
+Not yet broadly verified:
+
+- Jetson, QCOM/Snapdragon, x86 edge boxes, or non-Linux targets.
+- Jetson-specific GPU/power/thermal collectors.
+- Broad distribution/kernel compatibility beyond the tested Raspberry Pi
+  OS/Linux setup.
+
+## Canonical Verification
+
+Local default gate:
 
 ```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test -q --workspace
-scripts/demo/tests/run-sensor-gateway-demo-test.sh
-scripts/e2e/run-e2e.sh
-PATH="$HOME/.cargo/bin:$PATH" scripts/security/run-rust-security-checks.sh
-scripts/e2e/run-agent-quality-dogfood.sh
+make verify
 ```
+
+Contract gate:
+
+```bash
+make contract
+```
+
+Benchmark and dogfood:
+
+```bash
+bash scripts/benchmarks/tests/run-agent-debug-benchmark-test.sh
+bash scripts/e2e/run-agent-quality-dogfood.sh
+```
+
+Security/supply-chain:
+
+```bash
+PATH="$HOME/.cargo/bin:$PATH" bash scripts/security/run-rust-security-checks.sh
+```
+
+See [COMMANDS.md](../COMMANDS.md) for the complete command map and
+[tests/README.md](../tests/README.md) for test taxonomy.
