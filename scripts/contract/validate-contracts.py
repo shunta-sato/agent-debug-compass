@@ -238,6 +238,8 @@ def validate_semantic_invariants(
         validate_ref_resolution(fixture, path, errors)
     elif schema_id == "obs.loss_report.v1":
         validate_loss_report(fixture, path, errors)
+    elif schema_id == "obs.recorder_observation_coverage.v1":
+        validate_recorder_observation_coverage(fixture, path, errors)
     elif schema_id == "obs.recorder_status.v1":
         validate_recorder_status(fixture, path, errors)
     elif schema_id == "obs.recorder_marker.v1":
@@ -440,6 +442,59 @@ def validate_loss_report(fixture: Any, path: str, errors: list[str]) -> None:
             errors.append(
                 f"{path}.collector_loss[{index}].loss_confidence: unknown expected_samples requires unknown/low loss_confidence"
             )
+
+
+def validate_recorder_observation_coverage(fixture: Any, path: str, errors: list[str]) -> None:
+    if not isinstance(fixture, dict):
+        return
+    expected_signals = fixture.get("expected_signals", [])
+    if not isinstance(expected_signals, list):
+        expected_signals = []
+    signal_ids = {
+        signal.get("signal_id")
+        for signal in expected_signals
+        if isinstance(signal, dict)
+    }
+    for index, signal in enumerate(fixture.get("signals", [])):
+        if not isinstance(signal, dict):
+            continue
+        signal_id = signal.get("signal_id")
+        if signal.get("expected") is True and signal_id not in signal_ids:
+            errors.append(
+                f"{path}.signals[{index}].signal_id: expected coverage signal must appear in expected_signals"
+            )
+        retained = signal.get("retained_samples_before_freeze")
+        exported = signal.get("exported_samples")
+        truncated = signal.get("truncated_samples_due_to_freeze_budget")
+        if isinstance(retained, int) and isinstance(exported, int):
+            if exported > retained:
+                errors.append(
+                    f"{path}.signals[{index}].exported_samples: exported_samples must be <= retained_samples_before_freeze"
+                )
+            if isinstance(truncated, int) and truncated != max(retained - exported, 0):
+                errors.append(
+                    f"{path}.signals[{index}].truncated_samples_due_to_freeze_budget: must match retained_samples_before_freeze - exported_samples"
+                )
+        if signal.get("expected_samples_basis") == "budgeted_recorder_interval":
+            if signal.get("expected_samples") != signal.get("expected_samples_budgeted"):
+                errors.append(
+                    f"{path}.signals[{index}].expected_samples: budgeted basis must match expected_samples_budgeted"
+                )
+        if signal.get("coverage_state") == "missing":
+            data_quality = signal.get("data_quality")
+            if not isinstance(data_quality, dict) or not non_empty_string_list(data_quality.get("missing")):
+                errors.append(
+                    f"{path}.signals[{index}].data_quality.missing: missing coverage requires missing evidence explanation"
+                )
+        if signal.get("coverage_state") == "unavailable":
+            if signal.get("capability_status") not in {
+                "unavailable",
+                "requires_privilege",
+                "unsafe",
+            }:
+                errors.append(
+                    f"{path}.signals[{index}].capability_status: unavailable coverage requires unavailable/requires_privilege/unsafe capability"
+                )
 
 
 ALLOWED_RECORDER_TRANSITIONS = {

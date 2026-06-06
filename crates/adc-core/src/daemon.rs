@@ -16,16 +16,16 @@ use crate::{
     default_recorder_budget, default_target_id, drain_pending_recorder_markers, evaluate_trigger,
     freeze_recorder_marker, freeze_recorder_trigger, parse_meminfo, parse_net_dev, parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
-    recorder_freeze_decision_for_refused_trigger, recorder_incident_budget_status,
-    recorder_marker_result_for_frozen, recorder_marker_result_for_refused_with_budget_status,
-    recorder_overhead_for_service_run, recorder_ring_capacity_for_budget,
-    recorder_status_from_input, snapshot, write_evidence_index, write_recorder_marker_result,
-    write_recorder_status_artifact, AdcError, AdcResult, ArtifactManifest, ClockSource,
-    DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget, OverheadSample, Profile,
-    RecorderAdmissionDecision, RecorderBudgetStatus, RecorderOverheadAccounting,
-    RecorderOverheadScope, RecorderRing, RecorderSample, RecorderSampleRateGovernor,
-    RecorderSignalSample, RecorderStatusInput, RecorderStatusWriteGovernor, TimeRangeNs,
-    TriggerEvaluation, TriggerInput,
+    recorder_expected_signals_for_collectors, recorder_freeze_decision_for_refused_trigger,
+    recorder_incident_budget_status, recorder_marker_result_for_frozen,
+    recorder_marker_result_for_refused_with_budget_status, recorder_overhead_for_service_run,
+    recorder_ring_capacity_for_budget, recorder_status_from_input, snapshot, write_evidence_index,
+    write_recorder_marker_result, write_recorder_status_artifact, AdcError, AdcResult,
+    ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
+    OverheadSample, Profile, RecorderAdmissionDecision, RecorderBudgetStatus,
+    RecorderOverheadAccounting, RecorderOverheadScope, RecorderRing, RecorderSample,
+    RecorderSampleRateGovernor, RecorderSignalSample, RecorderStatusInput,
+    RecorderStatusWriteGovernor, TimeRangeNs, TriggerEvaluation, TriggerInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -258,11 +258,14 @@ pub fn run_service_for(
         let profile = load_profile(profile_dir, &profile_id)?;
         let profile_changed = recorder_profile_id.as_deref() != Some(profile_id.as_str());
         if profile_changed {
-            recorder_ring = RecorderRing::with_expected_signals(
+            recorder_ring = RecorderRing::with_expected_signal_model(
                 default_target_id(),
                 recorder_ring_capacity_for_budget(&recorder_budget),
                 recorder_budget.max_retention_ms,
-                recorder_expected_signal_ids(&profile),
+                recorder_expected_signals_for_collectors(
+                    &profile.always_on.collectors,
+                    profile.sampling.interval_ms,
+                ),
             );
             recorder_sample_rate =
                 RecorderSampleRateGovernor::new(recorder_budget.max_samples_per_second);
@@ -738,25 +741,6 @@ fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) {
         time_mono_ns: sample.time_mono_ns,
         signals,
     });
-}
-
-fn recorder_expected_signal_ids(profile: &Profile) -> Vec<String> {
-    let mut signal_ids = Vec::new();
-    for collector in &profile.always_on.collectors {
-        match collector.as_str() {
-            "cpu" => signal_ids.push("cpu.summary".to_string()),
-            "memory" => signal_ids.push("memory.summary".to_string()),
-            "network" => signal_ids.push("network.counters".to_string()),
-            "kmsg" => signal_ids.push("kmsg.cursor".to_string()),
-            "thermal" => signal_ids.push("thermal.zone".to_string()),
-            "cpufreq" => signal_ids.push("cpufreq.summary".to_string()),
-            "process" => signal_ids.push("process.topN".to_string()),
-            _ => {}
-        }
-    }
-    signal_ids.sort();
-    signal_ids.dedup();
-    signal_ids
 }
 
 fn recorder_freeze_budget_exhausted(

@@ -193,8 +193,40 @@ fn recorder_incident_get_rejects_traversal_and_reads_trigger_incidents() {
         "artifact://recorder/incidents/INC-TRIGGER-safe/loss_report.json"
     );
     assert_eq!(
+        response["coverage_ref"],
+        "artifact://recorder/incidents/INC-TRIGGER-safe/coverage.json"
+    );
+    assert_eq!(
         response["samples_ref"],
         "artifact://recorder/incidents/INC-TRIGGER-safe/samples.jsonl"
+    );
+
+    let coverage_ref = Command::new(env!("CARGO_BIN_EXE_adc"))
+        .args([
+            "investigate",
+            "ref",
+            "--ref",
+            "artifact://recorder/incidents/INC-TRIGGER-safe/coverage.json",
+            "--limit",
+            "20",
+        ])
+        .env("ADC_HOME", temp.path())
+        .output()
+        .expect("run coverage ref");
+    assert!(
+        coverage_ref.status.success(),
+        "coverage ref failed: {}",
+        String::from_utf8_lossy(&coverage_ref.stderr)
+    );
+    let coverage_resolution: serde_json::Value =
+        serde_json::from_slice(&coverage_ref.stdout).expect("coverage ref json");
+    assert_eq!(
+        coverage_resolution["ref_kind"],
+        "recorder_observation_coverage"
+    );
+    assert_eq!(
+        coverage_resolution["artifact_trust"]["content_class"],
+        "recorder_observation_coverage"
     );
 }
 

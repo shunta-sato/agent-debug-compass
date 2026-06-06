@@ -10,16 +10,18 @@
     "driver bug is confirmed"
   ],
   "requires_data_quality_attention": true,
-  "allowed_raw_ref_open_count": 2,
+  "allowed_raw_ref_open_count": 3,
   "candidate_investigation_state": {
     "data_quality_checked": true,
     "opened_raw_refs": [
       "artifact://recorder/incidents/INC-camera/frozen_window.json",
-      "artifact://recorder/incidents/INC-camera/loss_report.json"
+      "artifact://recorder/incidents/INC-camera/loss_report.json",
+      "artifact://recorder/incidents/INC-camera/coverage.json"
     ],
     "evidence_supported_statements": [
       "Flight Recorder preserved a bounded pre-window with thermal/cpufreq-like and frame-drop marker timing.",
-      "Loss report states which signals were present and which evidence was unavailable."
+      "Observation coverage distinguishes expected, missing, and unavailable signals instead of treating missing evidence as absence.",
+      "Loss report states which retained/exported samples survived the frozen artifact budget."
     ],
     "time_to_first_useful_probe_ms": 70,
     "hypothesis_set": {
@@ -64,7 +66,9 @@
       "recorder_overhead_within_budget": true,
       "artifact_bytes": 4096,
       "hypothesis_rank_score": 4,
-      "loss_report_present": true
+      "loss_report_present": true,
+      "observation_coverage_present": true,
+      "missing_evidence_distinguished": true
     }
   }
 }

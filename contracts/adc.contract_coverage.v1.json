@@ -32,7 +32,8 @@
       "static_fixtures": ["tests/golden/obs.artifact_trust.v1.min.json"],
       "generated_cli": [
         "target/contract-fixtures/cli.obs.artifact_trust.v1.generated.json",
-        "target/contract-fixtures/cli.obs.artifact_trust.recorder_loss_report.v1.generated.json"
+        "target/contract-fixtures/cli.obs.artifact_trust.recorder_loss_report.v1.generated.json",
+        "target/contract-fixtures/cli.obs.artifact_trust.recorder_observation_coverage.v1.generated.json"
       ],
       "generated_mcp": ["target/contract-fixtures/mcp.obs.artifact_trust.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
@@ -47,6 +48,7 @@
       "generated_cli": [
         "target/contract-fixtures/cli.obs.ref_resolution.v1.generated.json",
         "target/contract-fixtures/cli.obs.ref_resolution.recorder_loss_report.v1.generated.json",
+        "target/contract-fixtures/cli.obs.ref_resolution.recorder_observation_coverage.v1.generated.json",
         "target/contract-fixtures/cli.obs.ref_resolution.recorder_samples.v1.generated.json"
       ],
       "generated_mcp": ["target/contract-fixtures/mcp.obs.ref_resolution.v1.generated.json"],
@@ -75,6 +77,15 @@
       "static_fixtures": ["tests/golden/obs.recorder_buffer_status.v1.min.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "coverage_levels": ["static", "invariant"]
+    },
+    {
+      "contract": "obs.recorder_observation_coverage.v1",
+      "schema": "schemas/obs.recorder_observation_coverage.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_observation_coverage.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_observation_coverage.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
+      "coverage_levels": ["static", "generated_cli", "invariant", "adversarial"]
     },
     {
       "contract": "obs.recorder_budget.v1",

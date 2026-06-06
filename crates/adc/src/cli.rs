@@ -211,11 +211,14 @@ fn recorder_export_dataset(args: &[String]) -> Result<(), String> {
             .as_str()
             .unwrap_or("")
             .to_string();
+        let coverage_ref = adc_core::recorder_incident_artifact_ref(&incident_id, "coverage.json")
+            .map_err(|err| err.to_string())?;
         windows.push(serde_json::json!({
             "incident_id": incident_id,
             "window_type": "positive_incident",
             "window_ref": window_ref,
             "loss_report_ref": loss_report_ref,
+            "coverage_ref": coverage_ref,
             "artifact_trust_preserved": true,
             "data_quality_preserved": true,
             "label_state": "weak_label"
@@ -288,6 +291,8 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
             .map_err(|err| err.to_string())?;
     let loss_report_ref = adc_core::recorder_incident_artifact_ref(incident_id, "loss_report.json")
         .map_err(|err| err.to_string())?;
+    let coverage_ref = adc_core::recorder_incident_artifact_ref(incident_id, "coverage.json")
+        .map_err(|err| err.to_string())?;
     let samples_ref = adc_core::recorder_incident_artifact_ref(incident_id, "samples.jsonl")
         .map_err(|err| err.to_string())?;
     let response = serde_json::json!({
@@ -296,6 +301,7 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
         "incident_ref": incident_ref,
         "frozen_window_ref": frozen_window_ref,
         "loss_report_ref": loss_report_ref,
+        "coverage_ref": coverage_ref,
         "samples_ref": samples_ref,
         "marker": marker,
         "trigger_event": trigger_event,

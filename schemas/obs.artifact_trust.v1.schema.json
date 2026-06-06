@@ -31,6 +31,7 @@
         "recorder_status",
         "recorder_incident",
         "recorder_frozen_window",
+        "recorder_observation_coverage",
         "recorder_marker_result",
         "loss_report",
         "trigger_event",

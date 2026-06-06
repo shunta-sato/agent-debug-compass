@@ -1,4 +1,10 @@
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs,
+    path::Path,
+    process::{Command, Stdio},
+    thread,
+    time::Duration,
+};
 
 #[test]
 fn service_once_writes_state_and_recovers_existing_runs() {
@@ -182,6 +188,101 @@ triggers: []
         .any(|note| note
             .as_str()
             .is_some_and(|note| note.contains("max_samples_per_second"))));
+}
+
+#[test]
+fn service_for_ms_refreshes_expected_signal_model_after_profile_switch() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("recorder_memory.yaml"),
+        r#"
+profile: recorder_memory
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("memory profile");
+    fs::write(
+        profile_dir.join("recorder_cpu.yaml"),
+        r#"
+profile: recorder_cpu
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [cpu]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("cpu profile");
+
+    adc_core::arm_profile(temp.path(), "recorder_memory").expect("arm memory profile");
+    let child = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "400"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn bounded service");
+
+    thread::sleep(Duration::from_millis(80));
+    adc_core::arm_profile(temp.path(), "recorder_cpu").expect("switch to cpu profile");
+    thread::sleep(Duration::from_millis(120));
+    let marker = adc_core::marker_at_received_time(
+        "marker-profile-switch",
+        "operator",
+        "symptom after profile switch",
+        1_000,
+    );
+    adc_core::write_pending_recorder_marker(temp.path(), &marker).expect("pending marker");
+
+    let output = child.wait_with_output().expect("wait bounded service");
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    let incident_id = summary["frozen_incidents"][0]
+        .as_str()
+        .expect("frozen incident id");
+    let coverage: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/incidents")
+                .join(incident_id)
+                .join("coverage.json"),
+        )
+        .expect("coverage"),
+    )
+    .expect("coverage json");
+    let signals = coverage["signals"].as_array().expect("coverage signals");
+    assert!(
+        signals
+            .iter()
+            .any(|signal| signal["signal_id"] == "cpu.summary"),
+        "active profile expected cpu.summary coverage"
+    );
+    assert!(
+        signals
+            .iter()
+            .all(|signal| signal["signal_id"] != "memory.summary"),
+        "profile switch should not leave stale memory.summary expected coverage"
+    );
 }
 
 #[test]

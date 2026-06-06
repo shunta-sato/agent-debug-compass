@@ -306,6 +306,27 @@ assert_fails_with "expected_samples must be >= recorded_samples when known" \
     --schema-dir "${REPO_ROOT}/schemas" \
     --fixture-dir "${TMP_DIR}/invalid-loss-report"
 
+mkdir -p "${TMP_DIR}/invalid-observation-coverage"
+cp "${REPO_ROOT}/tests/golden/obs.recorder_observation_coverage.v1.min.json" \
+  "${TMP_DIR}/invalid-observation-coverage/obs.recorder_observation_coverage.v1.min.json"
+python3 - "${TMP_DIR}/invalid-observation-coverage/obs.recorder_observation_coverage.v1.min.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    value = json.load(fh)
+value["signals"][0]["retained_samples_before_freeze"] = 10
+value["signals"][0]["exported_samples"] = 2
+value["signals"][0]["truncated_samples_due_to_freeze_budget"] = 0
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(value, fh, indent=2)
+    fh.write("\n")
+PY
+assert_fails_with "must match retained_samples_before_freeze - exported_samples" \
+  "${REPO_ROOT}/scripts/contract/validate-contracts.py" \
+    --schema-dir "${REPO_ROOT}/schemas" \
+    --fixture-dir "${TMP_DIR}/invalid-observation-coverage"
+
 mkdir -p "${TMP_DIR}/invalid-recorder-transition"
 cp "${REPO_ROOT}/tests/golden/obs.recorder_status.v1.min.json" \
   "${TMP_DIR}/invalid-recorder-transition/obs.recorder_status.v1.min.json"

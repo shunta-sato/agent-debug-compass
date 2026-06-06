@@ -352,7 +352,7 @@ partial_freeze
 
 ## Implementation Status
 
-As of 2026-06-04 on the Flight Recorder implementation branch:
+As of 2026-06-06 on the Flight Recorder workstream:
 
 - PR4 contract scope is implemented through schema files, golden fixtures, and
   contract coverage for recorder status, buffer status, budget, marker,
@@ -362,13 +362,15 @@ As of 2026-06-04 on the Flight Recorder implementation branch:
 - PR6 marker scope is implemented through pending recorder markers consumed by
   `adc-targetd`, bounded incident materialization, incident listing, and incident
   retrieval.
-- PR7 autonomous trigger scope is implemented for existing daemon trigger
-  matches, preserving trigger windows as `trigger_policy` incidents with
-  symptom-oriented trigger-name guards and `max_frozen_incidents` throttling.
-- PR8 benchmark scope is implemented as a deterministic
+- Existing daemon trigger matches can already materialize `trigger_policy`
+  incidents, but richer autonomous trigger policy is intentionally deferred
+  until observation coverage is contract-governed.
+- PR7 adds observation coverage and an expected signal model before trigger
+  policy expansion.
+- Benchmark scope is implemented as a deterministic
   `camera_inference_degradation_flight_recorder` comparison of direct shell,
   on-demand ADC, and ADC Flight Recorder.
-- PR9 dataset readiness is implemented for local benchmark/regression dataset
+- Dataset readiness is implemented for local benchmark/regression dataset
   manifests. Public sharing datasets, label lifecycle events, and MCP recorder
   tools remain future work.
 - PR6 follow-up budget hardening treats `max_frozen_incidents` as
@@ -466,7 +468,36 @@ Acceptance:
 - unavailable Tx evidence is explicit through loss semantics;
 - no unbounded raw logs.
 
-### PR7: Autonomous Trigger Policy
+### PR7: Observation Coverage and Expected Signal Model
+
+Deliver:
+
+- `obs.recorder_observation_coverage.v1`,
+- expected signal model derived from the active profile,
+- configured interval and effective recorder interval semantics,
+- coverage states for covered, partial, missing, unavailable, degraded,
+  unknown, and explicit `not_expected` only for queried signals,
+- `coverage.json` materialized in every frozen incident bundle,
+- `observation_coverage` artifact ref in frozen windows,
+- `coverage_ref` in incident resolution and dataset manifest windows,
+- bounded `artifact://recorder/.../coverage.json` resolution with recorder-aware
+  artifact trust,
+- coverage/loss-report consistency invariants.
+
+Acceptance:
+
+- coverage distinguishes profile-configured interval from budget-effective
+  recorder interval;
+- expected-but-absent signals appear as missing evidence with `data_quality`;
+- unavailable capability or privilege produces `coverage_state=unavailable`,
+  not generic missing;
+- coverage and loss report do not contradict retained/exported/truncated counts;
+- default coverage does not enumerate the full possible signal catalog as
+  `not_expected`;
+- no new collectors, richer triggers, post-window capture, or root-cause claims
+  are introduced.
+
+### PR8: Symptom Trigger Policy v1
 
 Deliver:
 
@@ -476,8 +507,9 @@ Deliver:
 - incident merge/storm control,
 - symptom-oriented trigger naming guard,
 - `obs.trigger_policy.v1`,
-- `obs.recorder_trigger_event.v1`,
-- autonomous freeze integration.
+- trigger confidence and severity as preservation metadata,
+- autonomous freeze integration that checks observation coverage before Agents
+  interpret trigger absence.
 
 Acceptance:
 
@@ -485,9 +517,12 @@ Acceptance:
   current MVP; bounded post-window capture is a follow-up;
 - repeated trigger storms merge/cool down/degrade;
 - trigger names and outputs do not promote causes;
-- automatic trigger policy reuses the same freeze/loss contracts as marker flow.
+- automatic trigger policy reuses the same freeze/loss/coverage contracts as
+  marker flow;
+- trigger absence is documented as non-evidence unless relevant coverage is
+  sufficient.
 
-### PR8: Camera and Inference Degradation Vertical
+### PR9: Camera and Inference Degradation Vertical
 
 Deliver:
 
@@ -512,7 +547,7 @@ Acceptance:
   hypothesis, and hypothesis rank improvement;
 - recorder overhead stays within policy or degrades explicitly.
 
-### PR9: Dataset Readiness
+### PR10: Dataset Readiness
 
 Dataset scope is initially limited to:
 
@@ -553,11 +588,12 @@ Test first by layer:
 1. contract schema and adversarial fixtures,
 2. ring buffer unit tests,
 3. budget governor unit tests,
-4. trigger policy unit tests,
-5. freezer integration tests,
-6. CLI/MCP generated contract tests,
-7. E2E delayed incident scenario,
-8. benchmark comparison,
+4. observation coverage and expected signal unit tests,
+5. trigger policy unit tests,
+6. freezer integration tests,
+7. CLI/MCP generated contract tests,
+8. E2E delayed incident scenario,
+9. benchmark comparison,
 9. Raspberry Pi target smoke and overhead measurement.
 
 Required gates before each PR:

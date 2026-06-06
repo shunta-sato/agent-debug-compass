@@ -120,6 +120,18 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         "cli.obs.loss_report.v1.generated.json",
         &recorder_incident["frozen_window"]["loss_report"],
     );
+    let recorder_observation_coverage: Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/incidents/INC-marker-contract-cli/coverage.json"),
+        )
+        .expect("read generated coverage"),
+    )
+    .expect("coverage json");
+    write_fixture(
+        "cli.obs.recorder_observation_coverage.v1.generated.json",
+        &recorder_observation_coverage,
+    );
     let recorder_loss_ref = command_json(
         temp.path(),
         [
@@ -138,6 +150,25 @@ fn generated_cli_outputs_validate_against_public_contracts() {
     write_fixture(
         "cli.obs.artifact_trust.recorder_loss_report.v1.generated.json",
         &recorder_loss_ref["artifact_trust"],
+    );
+    let recorder_coverage_ref = command_json(
+        temp.path(),
+        [
+            "investigate",
+            "ref",
+            "--ref",
+            "artifact://recorder/incidents/INC-marker-contract-cli/coverage.json",
+            "--limit",
+            "20",
+        ],
+    );
+    write_fixture(
+        "cli.obs.ref_resolution.recorder_observation_coverage.v1.generated.json",
+        &recorder_coverage_ref,
+    );
+    write_fixture(
+        "cli.obs.artifact_trust.recorder_observation_coverage.v1.generated.json",
+        &recorder_coverage_ref["artifact_trust"],
     );
     let recorder_samples_ref = command_json(
         temp.path(),

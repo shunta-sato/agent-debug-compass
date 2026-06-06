@@ -45,6 +45,7 @@
           "window_type",
           "window_ref",
           "loss_report_ref",
+          "coverage_ref",
           "artifact_trust_preserved",
           "data_quality_preserved",
           "label_state"
@@ -63,6 +64,7 @@
           },
           "window_ref": {"type": "string", "minLength": 1},
           "loss_report_ref": {"type": "string", "minLength": 1},
+          "coverage_ref": {"type": "string", "minLength": 1},
           "artifact_trust_preserved": {"type": "boolean"},
           "data_quality_preserved": {"type": "boolean"},
           "label_state": {

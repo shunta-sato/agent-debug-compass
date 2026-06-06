@@ -228,6 +228,11 @@ fn recorder_ref_path(
                     "application/json",
                     crate::ContentClass::RecorderFrozenWindow,
                 ),
+                "coverage.json" => (
+                    "recorder_observation_coverage",
+                    "application/json",
+                    crate::ContentClass::RecorderObservationCoverage,
+                ),
                 "loss_report.json" => (
                     "recorder_loss_report",
                     "application/json",

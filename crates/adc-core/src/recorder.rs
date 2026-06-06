@@ -319,6 +319,117 @@ pub struct LossReport {
     pub data_quality: DataQuality,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderLayer {
+    App,
+    Middleware,
+    Os,
+    Kernel,
+    Driver,
+    Hardware,
+    Network,
+    AdcSelf,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderCoverageState {
+    Covered,
+    Partial,
+    Missing,
+    Unavailable,
+    NotExpected,
+    Degraded,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderCoverageConfidence {
+    Unknown,
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectedSamplesBasis {
+    ConfiguredProfileInterval,
+    BudgetedRecorderInterval,
+    Inferred,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderExpectedSignal {
+    pub schema_version: String,
+    pub signal_id: String,
+    pub collector_id: String,
+    pub layer: RecorderLayer,
+    pub configured_interval_ms: u64,
+    pub effective_interval_ms: u64,
+    pub required_capability: Option<String>,
+    pub capability_status: crate::CapabilityStatus,
+    pub required_privilege: String,
+    pub cost_tier: String,
+    pub priority: String,
+    pub expected_samples: Option<u64>,
+    pub expected: bool,
+    pub expectation_source: String,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderSignalCoverage {
+    pub signal_id: String,
+    pub expected: bool,
+    pub coverage_state: RecorderCoverageState,
+    pub coverage_confidence: RecorderCoverageConfidence,
+    pub configured_interval_ms: u64,
+    pub effective_interval_ms: u64,
+    pub expected_samples_configured: Option<u64>,
+    pub expected_samples_budgeted: Option<u64>,
+    pub expected_samples: Option<u64>,
+    pub expected_samples_basis: ExpectedSamplesBasis,
+    pub retained_samples_before_freeze: u64,
+    pub exported_samples: u64,
+    pub dropped_samples: u64,
+    pub truncated_samples_due_to_freeze_budget: u64,
+    pub loss_report_ref: String,
+    pub loss_collector_id: String,
+    pub loss_reasons: Vec<String>,
+    pub capability_status: crate::CapabilityStatus,
+    pub data_quality: DataQuality,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecorderCoverageSummary {
+    pub expected_signal_count: u64,
+    pub covered_signal_count: u64,
+    pub missing_signal_count: u64,
+    pub partial_signal_count: u64,
+    pub unavailable_signal_count: u64,
+    pub overall_coverage_percent: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecorderObservationCoverage {
+    pub schema_version: String,
+    pub target_id: String,
+    pub incident_id: String,
+    pub window_id: String,
+    pub time_range_mono_ns: TimeRange,
+    pub coverage_scope: String,
+    pub expected_signals: Vec<RecorderExpectedSignal>,
+    pub signals: Vec<RecorderSignalCoverage>,
+    pub summary: RecorderCoverageSummary,
+    pub loss_report_ref: String,
+    pub data_quality: DataQuality,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PreservationReason {
     pub kind: String,
@@ -443,8 +554,8 @@ pub fn recorder_pending_marker_ref(marker_id: &str) -> AdcResult<String> {
 pub fn recorder_incident_artifact_ref(incident_id: &str, artifact_name: &str) -> AdcResult<String> {
     validate_recorder_file_segment(incident_id, "incident_id")?;
     match artifact_name {
-        "incident.json" | "frozen_window.json" | "loss_report.json" | "samples.jsonl"
-        | "marker.json" | "trigger_event.json" => Ok(format!(
+        "incident.json" | "frozen_window.json" | "coverage.json" | "loss_report.json"
+        | "samples.jsonl" | "marker.json" | "trigger_event.json" => Ok(format!(
             "artifact://recorder/incidents/{incident_id}/{artifact_name}"
         )),
         _ => Err(AdcError::Artifact(format!(
@@ -645,7 +756,7 @@ pub struct RecorderRing {
     retention_ms: u64,
     samples: Vec<RecorderSample>,
     dropped_by_signal: BTreeMap<String, u64>,
-    expected_signal_ids: BTreeSet<String>,
+    expected_signals: BTreeMap<String, RecorderExpectedSignal>,
     throttled_sample_count: u64,
     throttle_notes: BTreeSet<String>,
 }
@@ -666,13 +777,32 @@ impl RecorderRing {
         retention_ms: u64,
         expected_signal_ids: impl IntoIterator<Item = String>,
     ) -> Self {
+        Self::with_expected_signal_model(
+            target_id,
+            capacity,
+            retention_ms,
+            expected_signal_ids
+                .into_iter()
+                .map(|signal_id| recorder_expected_signal_for_id(&signal_id, 1000)),
+        )
+    }
+
+    pub fn with_expected_signal_model(
+        target_id: impl Into<String>,
+        capacity: usize,
+        retention_ms: u64,
+        expected_signals: impl IntoIterator<Item = RecorderExpectedSignal>,
+    ) -> Self {
         Self {
             target_id: target_id.into(),
             capacity: capacity.max(1),
             retention_ms,
             samples: Vec::new(),
             dropped_by_signal: BTreeMap::new(),
-            expected_signal_ids: expected_signal_ids.into_iter().collect(),
+            expected_signals: expected_signals
+                .into_iter()
+                .map(|signal| (signal.signal_id.clone(), signal))
+                .collect(),
             throttled_sample_count: 0,
             throttle_notes: BTreeSet::new(),
         }
@@ -688,6 +818,10 @@ impl RecorderRing {
 
     pub fn samples(&self) -> &[RecorderSample] {
         &self.samples
+    }
+
+    pub fn expected_signals(&self) -> Vec<RecorderExpectedSignal> {
+        self.expected_signals.values().cloned().collect()
     }
 
     pub fn record_throttled_sample(&mut self, note: impl Into<String>) {
@@ -707,7 +841,7 @@ impl RecorderRing {
         let signal_ids = recorded_by_signal
             .keys()
             .chain(self.dropped_by_signal.keys())
-            .chain(self.expected_signal_ids.iter())
+            .chain(self.expected_signals.keys())
             .cloned()
             .collect::<BTreeSet<_>>();
 
@@ -719,7 +853,7 @@ impl RecorderRing {
             let dropped = self.dropped_by_signal.get(&signal_id).copied().unwrap_or(0);
             total_dropped = total_dropped.saturating_add(dropped);
             let expected_but_absent =
-                self.expected_signal_ids.contains(&signal_id) && recorded == 0 && dropped == 0;
+                self.expected_signals.contains_key(&signal_id) && recorded == 0 && dropped == 0;
             let mut signal_quality = data_quality_for_drop_count(dropped);
             if expected_but_absent {
                 signal_quality.missing.push(format!(
@@ -729,9 +863,14 @@ impl RecorderRing {
                     "expected recorder signal {signal_id} has no retained samples"
                 ));
             }
+            let configured_interval_ms = self
+                .expected_signals
+                .get(&signal_id)
+                .map(|signal| signal.configured_interval_ms)
+                .unwrap_or(1000);
             signals.push(RecorderSignalStatus {
                 signal_id,
-                configured_interval_ms: 1000,
+                configured_interval_ms,
                 expected_samples: Some(recorded.saturating_add(dropped)),
                 recorded_samples: recorded,
                 dropped_samples: dropped,
@@ -952,6 +1091,24 @@ pub fn freeze_recorder_marker(
         "loss_report".to_string(),
         format!("artifact://recorder/incidents/{incident_id}/loss_report.json"),
     );
+    artifact_refs.insert(
+        "observation_coverage".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/coverage.json"),
+    );
+    let time_range = TimeRange { start, end };
+    let expected_signals = ring.expected_signals();
+    let coverage = observation_coverage_for_freeze(
+        CoverageBuildContext {
+            incident_id,
+            window_id,
+            target_id: &buffer_status.target_id,
+            time_range: time_range.clone(),
+        },
+        &buffer_status,
+        &expected_signals,
+        &loss_report,
+        budget,
+    );
 
     let frozen_window = RecorderFrozenWindow {
         schema_version: "obs.recorder_frozen_window.v1".to_string(),
@@ -964,7 +1121,7 @@ pub fn freeze_recorder_marker(
             kind: freeze_reason_for_marker(marker),
             name: "marker_received".to_string(),
         },
-        time_range_mono_ns: TimeRange { start, end },
+        time_range_mono_ns: time_range,
         pre_window_ms: budget.max_retention_ms,
         post_window_ms: 0,
         persistence: FrozenWindowPersistence {
@@ -1007,6 +1164,7 @@ pub fn freeze_recorder_marker(
     write_json(&incident_dir.join("marker.json"), marker)?;
     write_jsonl(&incident_dir.join("samples.jsonl"), &freeze_samples)?;
     write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
+    write_json(&incident_dir.join("coverage.json"), &coverage)?;
     write_json(&incident_dir.join("frozen_window.json"), &frozen_window)?;
     write_json(&incident_dir.join("incident.json"), &incident)?;
 
@@ -1074,6 +1232,24 @@ pub fn freeze_recorder_trigger(
         "loss_report".to_string(),
         format!("artifact://recorder/incidents/{incident_id}/loss_report.json"),
     );
+    artifact_refs.insert(
+        "observation_coverage".to_string(),
+        format!("artifact://recorder/incidents/{incident_id}/coverage.json"),
+    );
+    let time_range = TimeRange { start, end };
+    let expected_signals = ring.expected_signals();
+    let coverage = observation_coverage_for_freeze(
+        CoverageBuildContext {
+            incident_id,
+            window_id,
+            target_id: &buffer_status.target_id,
+            time_range: time_range.clone(),
+        },
+        &buffer_status,
+        &expected_signals,
+        &loss_report,
+        budget,
+    );
 
     let frozen_window = RecorderFrozenWindow {
         schema_version: "obs.recorder_frozen_window.v1".to_string(),
@@ -1086,7 +1262,7 @@ pub fn freeze_recorder_trigger(
             kind: "trigger_policy".to_string(),
             name: trigger_name.to_string(),
         },
-        time_range_mono_ns: TimeRange { start, end },
+        time_range_mono_ns: time_range,
         pre_window_ms: budget.max_retention_ms,
         post_window_ms: 0,
         persistence: FrozenWindowPersistence {
@@ -1139,6 +1315,7 @@ pub fn freeze_recorder_trigger(
     )?;
     write_jsonl(&incident_dir.join("samples.jsonl"), &freeze_samples)?;
     write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
+    write_json(&incident_dir.join("coverage.json"), &coverage)?;
     write_json(&incident_dir.join("frozen_window.json"), &frozen_window)?;
     write_json(&incident_dir.join("incident.json"), &incident)?;
 
@@ -1251,6 +1428,311 @@ fn loss_report_for_buffer_with_quality(
     }
 }
 
+struct CoverageBuildContext<'a> {
+    incident_id: &'a str,
+    window_id: &'a str,
+    target_id: &'a str,
+    time_range: TimeRange,
+}
+
+fn observation_coverage_for_freeze(
+    context: CoverageBuildContext<'_>,
+    status: &RecorderBufferStatus,
+    expected_signal_model: &[RecorderExpectedSignal],
+    loss_report: &LossReport,
+    budget: &RecorderBudget,
+) -> RecorderObservationCoverage {
+    let loss_report_ref = format!(
+        "artifact://recorder/incidents/{}/loss_report.json",
+        context.incident_id
+    );
+    let loss_by_signal = loss_report
+        .collector_loss
+        .iter()
+        .map(|loss| (loss.collector_id.clone(), loss))
+        .collect::<BTreeMap<_, _>>();
+    let expected_by_signal = expected_signal_model
+        .iter()
+        .map(|signal| (signal.signal_id.clone(), signal))
+        .collect::<BTreeMap<_, _>>();
+    let mut expected_signals = Vec::new();
+    let mut signals = Vec::new();
+    let mut coverage_quality = medium_quality();
+
+    for signal_status in &status.signals {
+        let expected_signal = expected_signal_for_status(
+            signal_status,
+            &context.time_range,
+            budget,
+            expected_by_signal.get(&signal_status.signal_id).copied(),
+        );
+        let Some(loss) = loss_by_signal.get(&signal_status.signal_id).copied() else {
+            coverage_quality.missing.push(format!(
+                "loss_report has no collector_loss entry for expected signal {}",
+                signal_status.signal_id
+            ));
+            continue;
+        };
+        let coverage_state = coverage_state_for_loss(loss, expected_signal.capability_status);
+        let mut signal_quality = signal_status.data_quality.clone();
+        if matches!(coverage_state, RecorderCoverageState::Missing) {
+            let note = format!(
+                "{} expected by active recorder profile but has no exported samples",
+                signal_status.signal_id
+            );
+            if !signal_quality
+                .missing
+                .iter()
+                .any(|existing| existing == &note)
+            {
+                signal_quality.missing.push(note.clone());
+            }
+            if !coverage_quality
+                .missing
+                .iter()
+                .any(|existing| existing == &note)
+            {
+                coverage_quality.missing.push(note);
+            }
+        }
+        if loss.truncated_samples_due_to_freeze_budget > 0 {
+            signal_quality.truncated = true;
+            coverage_quality.truncated = true;
+        }
+        if signal_status.dropped_samples > 0 {
+            signal_quality.dropped = true;
+            signal_quality.drop_count = signal_status.dropped_samples;
+            coverage_quality.dropped = true;
+            coverage_quality.drop_count = coverage_quality
+                .drop_count
+                .saturating_add(signal_status.dropped_samples);
+        }
+        if signal_status.data_quality.throttled {
+            signal_quality.throttled = true;
+            coverage_quality.throttled = true;
+        }
+        let mut loss_reasons = loss.loss_reasons.clone();
+        if matches!(coverage_state, RecorderCoverageState::Unavailable)
+            && !loss_reasons
+                .iter()
+                .any(|reason| reason == "required_capability_unavailable")
+        {
+            loss_reasons.push("required_capability_unavailable".to_string());
+        }
+
+        let coverage_confidence = if expected_signal.expected_samples.is_some() {
+            RecorderCoverageConfidence::Medium
+        } else {
+            RecorderCoverageConfidence::Unknown
+        };
+        signals.push(RecorderSignalCoverage {
+            signal_id: signal_status.signal_id.clone(),
+            expected: true,
+            coverage_state,
+            coverage_confidence,
+            configured_interval_ms: expected_signal.configured_interval_ms,
+            effective_interval_ms: expected_signal.effective_interval_ms,
+            expected_samples_configured: expected_samples_for_interval(
+                &context.time_range,
+                expected_signal.configured_interval_ms,
+            ),
+            expected_samples_budgeted: expected_signal.expected_samples,
+            expected_samples: expected_signal.expected_samples,
+            expected_samples_basis: ExpectedSamplesBasis::BudgetedRecorderInterval,
+            retained_samples_before_freeze: loss.retained_samples_before_freeze,
+            exported_samples: loss.exported_samples,
+            dropped_samples: loss.dropped_samples,
+            truncated_samples_due_to_freeze_budget: loss.truncated_samples_due_to_freeze_budget,
+            loss_report_ref: loss_report_ref.clone(),
+            loss_collector_id: loss.collector_id.clone(),
+            loss_reasons,
+            capability_status: expected_signal.capability_status,
+            data_quality: signal_quality,
+        });
+        expected_signals.push(expected_signal);
+    }
+
+    let summary = coverage_summary(&signals);
+    RecorderObservationCoverage {
+        schema_version: "obs.recorder_observation_coverage.v1".to_string(),
+        target_id: context.target_id.to_string(),
+        incident_id: context.incident_id.to_string(),
+        window_id: context.window_id.to_string(),
+        time_range_mono_ns: context.time_range,
+        coverage_scope: "frozen_incident".to_string(),
+        expected_signals,
+        signals,
+        summary,
+        loss_report_ref,
+        data_quality: coverage_quality,
+    }
+}
+
+fn expected_signal_for_status(
+    signal_status: &RecorderSignalStatus,
+    time_range: &TimeRange,
+    budget: &RecorderBudget,
+    model: Option<&RecorderExpectedSignal>,
+) -> RecorderExpectedSignal {
+    let mut expected = model
+        .cloned()
+        .unwrap_or_else(|| recorder_expected_signal_for_id(&signal_status.signal_id, 1000));
+    let configured_interval_ms = model
+        .map(|signal| signal.configured_interval_ms)
+        .unwrap_or(signal_status.configured_interval_ms)
+        .max(1);
+    let effective_interval_ms = configured_interval_ms.max(effective_recorder_interval_ms(
+        budget.max_samples_per_second,
+    ));
+    let expected_samples = expected_samples_for_interval(time_range, effective_interval_ms);
+    let mut data_quality = merge_data_quality(&expected.data_quality, &signal_status.data_quality);
+    data_quality.notes.push(format!(
+        "effective_interval_ms uses recorder sample-rate budget max_samples_per_second={}",
+        budget.max_samples_per_second
+    ));
+    if expected_samples.is_none() {
+        data_quality
+            .missing
+            .push("expected sample count could not be derived".to_string());
+    }
+    expected.configured_interval_ms = configured_interval_ms;
+    expected.effective_interval_ms = effective_interval_ms;
+    expected.expected_samples = expected_samples;
+    expected.data_quality = data_quality;
+    expected
+}
+
+fn merge_data_quality(left: &DataQuality, right: &DataQuality) -> DataQuality {
+    let mut merged = left.clone();
+    merged.dropped |= right.dropped;
+    merged.drop_count = merged.drop_count.saturating_add(right.drop_count);
+    merged.throttled |= right.throttled;
+    merged.truncated |= right.truncated;
+    merged.missing.extend(right.missing.clone());
+    merged.notes.extend(right.notes.clone());
+    merged
+}
+
+fn expected_signal_metadata(signal_id: &str) -> (String, RecorderLayer, Option<&'static str>) {
+    match signal_id {
+        "cpu.summary" => (
+            "cpu".to_string(),
+            RecorderLayer::Os,
+            Some("linux.procfs.cpu"),
+        ),
+        "memory.summary" => (
+            "memory".to_string(),
+            RecorderLayer::Os,
+            Some("linux.procfs.meminfo"),
+        ),
+        "network.counters" => (
+            "network".to_string(),
+            RecorderLayer::Network,
+            Some("linux.procfs.net_dev"),
+        ),
+        "kmsg.cursor" => (
+            "kmsg".to_string(),
+            RecorderLayer::Kernel,
+            Some("linux.kmsg_or_fixture"),
+        ),
+        "thermal.zone" => (
+            "thermal".to_string(),
+            RecorderLayer::Hardware,
+            Some("linux.sysfs.thermal_zone"),
+        ),
+        "cpufreq.summary" => (
+            "cpufreq".to_string(),
+            RecorderLayer::Hardware,
+            Some("linux.sysfs.cpufreq"),
+        ),
+        "process.topN" => (
+            "process".to_string(),
+            RecorderLayer::Os,
+            Some("linux.procfs.process"),
+        ),
+        other => (
+            other.split('.').next().unwrap_or("unknown").to_string(),
+            RecorderLayer::Unknown,
+            None,
+        ),
+    }
+}
+
+fn effective_recorder_interval_ms(max_samples_per_second: u64) -> u64 {
+    if max_samples_per_second == 0 {
+        return 1000;
+    }
+    1000_u64.div_ceil(max_samples_per_second).max(1)
+}
+
+fn expected_samples_for_interval(time_range: &TimeRange, interval_ms: u64) -> Option<u64> {
+    if interval_ms == 0 {
+        return None;
+    }
+    let duration_ms = time_range
+        .end
+        .saturating_sub(time_range.start)
+        .saturating_div(1_000_000);
+    Some(duration_ms.saturating_div(interval_ms).saturating_add(1))
+}
+
+fn coverage_state_for_loss(
+    loss: &CollectorLoss,
+    capability_status: crate::CapabilityStatus,
+) -> RecorderCoverageState {
+    if matches!(
+        capability_status,
+        crate::CapabilityStatus::Unavailable
+            | crate::CapabilityStatus::RequiresPrivilege
+            | crate::CapabilityStatus::Unsafe
+    ) {
+        return RecorderCoverageState::Unavailable;
+    }
+    if loss.exported_samples == 0 {
+        return RecorderCoverageState::Missing;
+    }
+    if loss.dropped_samples > 0
+        || loss.truncated_samples_due_to_freeze_budget > 0
+        || !loss.collectors_degraded.is_empty()
+    {
+        return RecorderCoverageState::Partial;
+    }
+    RecorderCoverageState::Covered
+}
+
+fn coverage_summary(signals: &[RecorderSignalCoverage]) -> RecorderCoverageSummary {
+    let expected_signal_count = signals.iter().filter(|signal| signal.expected).count() as u64;
+    let covered_signal_count = signals
+        .iter()
+        .filter(|signal| signal.coverage_state == RecorderCoverageState::Covered)
+        .count() as u64;
+    let missing_signal_count = signals
+        .iter()
+        .filter(|signal| signal.coverage_state == RecorderCoverageState::Missing)
+        .count() as u64;
+    let partial_signal_count = signals
+        .iter()
+        .filter(|signal| signal.coverage_state == RecorderCoverageState::Partial)
+        .count() as u64;
+    let unavailable_signal_count = signals
+        .iter()
+        .filter(|signal| signal.coverage_state == RecorderCoverageState::Unavailable)
+        .count() as u64;
+    let overall_coverage_percent = if expected_signal_count == 0 {
+        0.0
+    } else {
+        (covered_signal_count as f64 / expected_signal_count as f64) * 100.0
+    };
+    RecorderCoverageSummary {
+        expected_signal_count,
+        covered_signal_count,
+        missing_signal_count,
+        partial_signal_count,
+        unavailable_signal_count,
+        overall_coverage_percent,
+    }
+}
+
 fn recorded_counts_by_signal(samples: &[RecorderSample]) -> BTreeMap<String, u64> {
     let mut counts = BTreeMap::new();
     for sample in samples {
@@ -1343,6 +1825,62 @@ pub fn recorder_ring_capacity_for_budget(budget: &RecorderBudget) -> usize {
         .saturating_mul(retention_seconds.max(1));
     let capacity_by_memory = budget.max_memory_bytes / ESTIMATED_SAMPLE_BYTES;
     capacity_by_rate.min(capacity_by_memory).max(1) as usize
+}
+
+pub fn recorder_expected_signal_for_id(
+    signal_id: &str,
+    configured_interval_ms: u64,
+) -> RecorderExpectedSignal {
+    let (collector_id, layer, capability) = expected_signal_metadata(signal_id);
+    RecorderExpectedSignal {
+        schema_version: "obs.recorder_expected_signal.v1".to_string(),
+        signal_id: signal_id.to_string(),
+        collector_id,
+        layer,
+        configured_interval_ms: configured_interval_ms.max(1),
+        effective_interval_ms: configured_interval_ms.max(1),
+        required_capability: capability.map(str::to_string),
+        capability_status: crate::CapabilityStatus::Unknown,
+        required_privilege: "none".to_string(),
+        cost_tier: "always_on_low".to_string(),
+        priority: "medium".to_string(),
+        expected_samples: None,
+        expected: true,
+        expectation_source: "profile.always_on.collectors".to_string(),
+        data_quality: medium_quality(),
+    }
+}
+
+pub fn recorder_expected_signals_for_collectors(
+    collectors: &[String],
+    configured_interval_ms: u64,
+) -> Vec<RecorderExpectedSignal> {
+    let mut signals = Vec::new();
+    for collector in collectors {
+        let Some(signal_id) = signal_id_for_collector(collector) else {
+            continue;
+        };
+        signals.push(recorder_expected_signal_for_id(
+            signal_id,
+            configured_interval_ms,
+        ));
+    }
+    signals.sort_by(|left, right| left.signal_id.cmp(&right.signal_id));
+    signals.dedup_by(|left, right| left.signal_id == right.signal_id);
+    signals
+}
+
+fn signal_id_for_collector(collector: &str) -> Option<&'static str> {
+    match collector {
+        "cpu" => Some("cpu.summary"),
+        "memory" => Some("memory.summary"),
+        "network" => Some("network.counters"),
+        "kmsg" => Some("kmsg.cursor"),
+        "thermal" => Some("thermal.zone"),
+        "cpufreq" => Some("cpufreq.summary"),
+        "process" => Some("process.topN"),
+        _ => None,
+    }
 }
 
 pub fn recorder_default_budget_status(

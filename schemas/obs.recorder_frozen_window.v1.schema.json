@@ -63,6 +63,13 @@
     },
     "artifact_refs": {
       "type": "object",
+      "required": ["observation_coverage"],
+      "properties": {
+        "observation_coverage": {
+          "type": "string",
+          "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/coverage\\.json$"
+        }
+      },
       "additionalProperties": {"type": "string"}
     },
     "loss_report": {"$ref": "obs.loss_report.v1.schema.json"},
