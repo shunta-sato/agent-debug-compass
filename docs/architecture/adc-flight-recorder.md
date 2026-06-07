@@ -355,6 +355,7 @@ Initial Linux/Raspberry Pi-class signals:
 - `cpufreq.summary`,
 - `process.topN`,
 - `dmesg.cursor` or bounded mock cursor,
+- `app_log.cursor` for configured append-only application logs,
 - `app.marker`,
 - `adc.self_overhead`.
 
@@ -376,6 +377,32 @@ always-on high-frequency tracing.
 The buffer must report configured retention, current retained range, expected
 samples, recorded samples, dropped samples, known gap ranges, degraded
 collectors, and storage volatility.
+
+### Log Cursor And Blackout Semantics
+
+The current log-cursor MVP supports a rootless append-only application log
+source configured for `adc-targetd`. It keeps a cursor offset, exports bounded
+`log_events.jsonl` slices into frozen incidents, and writes
+`log_source_status.json` plus `blackout_report.json`.
+
+The important Agent-facing distinction is:
+
+```text
+no captured log event
+  != no log event happened
+```
+
+Recorder log status distinguishes:
+
+- source readable and quiet with cursor continuity,
+- source unavailable or permission denied,
+- source rotated or truncated,
+- cursor gap / blackout,
+- events captured but truncated by budget.
+
+Log text remains target-originated data and resolves with a data-only
+instruction policy. The MVP does not enable always-on live journald or
+`/dev/kmsg` cursors by default; those remain future source-specific adapters.
 
 Continuous retention and frozen incidents have different persistence models:
 
@@ -488,6 +515,8 @@ obs.recorder_incident_resolution.v1
 obs.recorder_frozen_window.v1
 obs.loss_report.v1
 obs.recorder_overhead.v1
+obs.recorder_log_source_status.v1
+obs.recorder_blackout_report.v1
 obs.trigger_policy.v1
 obs.recorder_trigger_event.v1
 obs.anomaly_score.v1

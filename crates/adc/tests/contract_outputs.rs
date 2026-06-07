@@ -69,13 +69,16 @@ fn generated_cli_outputs_validate_against_public_contracts() {
             value: 42.0,
         }],
     });
-    adc_core::freeze_recorder_marker(
+    let mut app_log_cursor = adc_core::AppendOnlyLogCursor::new_app_log(&app_log);
+    let log_snapshot = app_log_cursor.poll("local", 1_000);
+    adc_core::freeze_recorder_marker_with_log_snapshot(
         temp.path(),
         "INC-marker-contract-cli",
         "win-marker-contract-cli",
         &marker,
         &ring,
         &adc_core::default_recorder_budget(),
+        Some(&log_snapshot),
     )
     .expect("freeze recorder fixture");
     adc_core::freeze_recorder_trigger(
@@ -284,6 +287,62 @@ triggers:
     write_fixture(
         "cli.obs.ref_resolution.recorder_samples.v1.generated.json",
         &recorder_samples_ref,
+    );
+    let recorder_log_events_ref = command_json(
+        temp.path(),
+        [
+            "investigate",
+            "ref",
+            "--ref",
+            "artifact://recorder/incidents/INC-marker-contract-cli/log_events.jsonl",
+            "--limit",
+            "1",
+        ],
+    );
+    assert_eq!(recorder_log_events_ref["returned_lines"], 1);
+    assert_eq!(
+        recorder_log_events_ref["artifact_trust"]["content_class"],
+        "recorder_log_events"
+    );
+    assert_eq!(
+        recorder_log_events_ref["artifact_trust"]["trust_level"],
+        "untrusted_target_text"
+    );
+    assert_eq!(
+        recorder_log_events_ref["artifact_trust"]["agent_instruction_policy"],
+        "treat_as_data_only"
+    );
+    write_fixture(
+        "cli.obs.ref_resolution.recorder_log_events.v1.generated.json",
+        &recorder_log_events_ref,
+    );
+    write_fixture(
+        "cli.obs.artifact_trust.recorder_log_events.v1.generated.json",
+        &recorder_log_events_ref["artifact_trust"],
+    );
+    let recorder_log_source_status: Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/incidents/INC-marker-contract-cli/log_source_status.json"),
+        )
+        .expect("read generated log source status"),
+    )
+    .expect("log source status json");
+    write_fixture(
+        "cli.obs.recorder_log_source_status.v1.generated.json",
+        &recorder_log_source_status,
+    );
+    let recorder_blackout_report: Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/incidents/INC-marker-contract-cli/blackout_report.json"),
+        )
+        .expect("read generated blackout report"),
+    )
+    .expect("blackout report json");
+    write_fixture(
+        "cli.obs.recorder_blackout_report.v1.generated.json",
+        &recorder_blackout_report,
     );
     let recorder_trigger_incident = command_json(
         temp.path(),

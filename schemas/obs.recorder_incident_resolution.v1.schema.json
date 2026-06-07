@@ -12,6 +12,9 @@
     "coverage_ref",
     "trigger_decision_ref",
     "samples_ref",
+    "log_source_status_ref",
+    "log_events_ref",
+    "blackout_report_ref",
     "marker",
     "trigger_event",
     "trigger_decision",
@@ -31,6 +34,18 @@
       "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/trigger_decision\\.json$"
     },
     "samples_ref": {"type": "string", "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/samples\\.jsonl$"},
+    "log_source_status_ref": {
+      "type": ["string", "null"],
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/log_source_status\\.json$"
+    },
+    "log_events_ref": {
+      "type": ["string", "null"],
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/log_events\\.jsonl$"
+    },
+    "blackout_report_ref": {
+      "type": ["string", "null"],
+      "pattern": "^artifact://recorder/incidents/[A-Za-z0-9][A-Za-z0-9_.-]*/blackout_report\\.json$"
+    },
     "marker": {
       "anyOf": [
         {"$ref": "obs.recorder_marker.v1.schema.json"},

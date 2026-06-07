@@ -211,6 +211,22 @@ If this stress run reports `deployability_passed=false`, that is a known
 resource discipline regression: aggressive configured intervals should not force
 global high-frequency semantic polling in the default always-on recorder path.
 
+PR11 recorder log cursor / blackout smoke on `target55`:
+
+```bash
+cargo build -p adc -p adc-targetd
+bash scripts/e2e/target/run-target55-log-cursor-blackout-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-log-cursor-blackout-smoke
+```
+
+This smoke arms an append-only app log cursor, appends multiple log lines between
+daemon control ticks, freezes a marker incident, resolves bounded log refs, and
+checks that log text remains `treat_as_data_only`. It also computes
+`adc-targetd` CPU seconds / wall seconds for the run and fails if the ratio
+exceeds the configured threshold.
+
 Optional install/provision helpers:
 
 ```bash

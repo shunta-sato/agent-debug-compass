@@ -5,6 +5,7 @@ use crate::{AdcError, AdcResult};
 use super::{
     coverage::{observation_coverage_for_freeze, CoverageBuildContext},
     io::{write_json, write_jsonl},
+    logs::{blackout_report_for_log_snapshot, RecorderLogSnapshot},
     loss::{loss_report_for_buffer_with_quality, samples_within_freeze_budget},
     marker::freeze_reason_for_marker,
     model::{
@@ -25,6 +26,26 @@ pub fn freeze_recorder_marker(
     marker: &RecorderMarker,
     ring: &RecorderRing,
     budget: &RecorderBudget,
+) -> AdcResult<RecorderFreeze> {
+    freeze_recorder_marker_with_log_snapshot(
+        artifact_root,
+        incident_id,
+        window_id,
+        marker,
+        ring,
+        budget,
+        None,
+    )
+}
+
+pub fn freeze_recorder_marker_with_log_snapshot(
+    artifact_root: impl AsRef<Path>,
+    incident_id: &str,
+    window_id: &str,
+    marker: &RecorderMarker,
+    ring: &RecorderRing,
+    budget: &RecorderBudget,
+    log_snapshot: Option<&RecorderLogSnapshot>,
 ) -> AdcResult<RecorderFreeze> {
     validate_recorder_file_segment(incident_id, "incident_id")?;
     validate_recorder_file_segment(window_id, "window_id")?;
@@ -77,6 +98,20 @@ pub fn freeze_recorder_marker(
         "observation_coverage".to_string(),
         format!("artifact://recorder/incidents/{incident_id}/coverage.json"),
     );
+    if log_snapshot.is_some() {
+        artifact_refs.insert(
+            "log_events".to_string(),
+            format!("artifact://recorder/incidents/{incident_id}/log_events.jsonl"),
+        );
+        artifact_refs.insert(
+            "log_source_status".to_string(),
+            format!("artifact://recorder/incidents/{incident_id}/log_source_status.json"),
+        );
+        artifact_refs.insert(
+            "blackout_report".to_string(),
+            format!("artifact://recorder/incidents/{incident_id}/blackout_report.json"),
+        );
+    }
     let time_range = TimeRange { start, end };
     let expected_signals = ring.expected_signals();
     let coverage = observation_coverage_for_freeze(
@@ -147,6 +182,34 @@ pub fn freeze_recorder_marker(
     write_jsonl(&incident_dir.join("samples.jsonl"), &freeze_samples)?;
     write_json(&incident_dir.join("loss_report.json"), &loss_report)?;
     write_json(&incident_dir.join("coverage.json"), &coverage)?;
+    if let Some(snapshot) = log_snapshot {
+        let mut source_status = snapshot.source_status.clone();
+        source_status.artifact_refs.insert(
+            "log_events".to_string(),
+            format!("artifact://recorder/incidents/{incident_id}/log_events.jsonl"),
+        );
+        source_status.artifact_refs.insert(
+            "blackout_report".to_string(),
+            format!("artifact://recorder/incidents/{incident_id}/blackout_report.json"),
+        );
+        let snapshot_with_refs = RecorderLogSnapshot {
+            source_status,
+            events: snapshot.events.clone(),
+        };
+        let blackout_report = blackout_report_for_log_snapshot(
+            &frozen_window.target_id,
+            incident_id,
+            window_id,
+            frozen_window.time_range_mono_ns.clone(),
+            &snapshot_with_refs,
+        );
+        write_jsonl(&incident_dir.join("log_events.jsonl"), &snapshot.events)?;
+        write_json(
+            &incident_dir.join("log_source_status.json"),
+            &snapshot_with_refs.source_status,
+        )?;
+        write_json(&incident_dir.join("blackout_report.json"), &blackout_report)?;
+    }
     write_json(&incident_dir.join("frozen_window.json"), &frozen_window)?;
     write_json(&incident_dir.join("incident.json"), &incident)?;
 

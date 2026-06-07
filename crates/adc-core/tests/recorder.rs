@@ -1,11 +1,11 @@
-use std::time::Duration;
+use std::{fs, io::Write, time::Duration};
 
 use adc_core::{
     arm_profile, default_recorder_budget, freeze_recorder_marker, freeze_recorder_trigger,
     marker_at_received_time, read_recorder_status_artifact, recorder_budget_for_power_mode,
     recorder_incident_budget_status, recorder_power_snapshot_from_sysfs,
     recorder_resource_status_for_overhead, recorder_ring_capacity_for_budget, recorder_status_for,
-    run_service_for, write_pending_recorder_marker, RecorderAdmissionDecision,
+    run_service_for, write_pending_recorder_marker, AppendOnlyLogCursor, RecorderAdmissionDecision,
     RecorderAdmissionRefusalReason, RecorderBatteryState, RecorderPowerMode, RecorderPowerSource,
     RecorderRing, RecorderSample, RecorderSampleRateGovernor, RecorderSignalSample,
     RecorderStatusWriteGovernor, RetainedArtifactBytesEstimateScope,
@@ -27,6 +27,60 @@ fn recorder_ring_drops_oldest_and_reports_loss_semantics() {
     assert_eq!(status.signals[0].recorded_samples, 2);
     assert_eq!(status.signals[0].dropped_samples, 1);
     assert!(status.data_quality.dropped);
+}
+
+#[test]
+fn append_log_cursor_distinguishes_quiet_from_unavailable_or_blackout() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let log_path = temp.path().join("app.log");
+    fs::write(&log_path, "INFO baseline ready\n").expect("log");
+    let mut cursor = AppendOnlyLogCursor::new_app_log(&log_path);
+
+    let first = cursor.poll("local", 1_000);
+    assert_eq!(first.source_status.continuity_state, "continuous");
+    assert_eq!(first.source_status.events_observed, 1);
+
+    let quiet = cursor.poll("local", 2_000);
+    assert_eq!(
+        quiet.source_status.continuity_state,
+        "silent_with_continuity"
+    );
+    assert_eq!(quiet.source_status.events_observed, 1);
+    assert!(quiet.source_status.data_quality.missing.is_empty());
+
+    fs::write(&log_path, "").expect("truncate log");
+    let rotated = cursor.poll("local", 3_000);
+    assert_eq!(rotated.source_status.continuity_state, "rotated");
+    assert!(rotated.source_status.rotation_detected);
+    assert!(!rotated.source_status.blackout_ranges.is_empty());
+}
+
+#[test]
+fn append_log_cursor_captures_multiple_lines_between_polls() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let log_path = temp.path().join("app.log");
+    fs::write(&log_path, "").expect("log");
+    let mut cursor = AppendOnlyLogCursor::new_app_log(&log_path);
+    cursor.poll("local", 1_000);
+
+    let mut file = fs::OpenOptions::new()
+        .append(true)
+        .open(&log_path)
+        .expect("append");
+    writeln!(file, "WARN first event").expect("first");
+    writeln!(file, "ERROR second event").expect("second");
+    writeln!(file, "INFO third event").expect("third");
+
+    let snapshot = cursor.poll("local", 2_000);
+    let messages = snapshot
+        .events
+        .iter()
+        .map(|event| event.message.as_str())
+        .collect::<Vec<_>>();
+    assert!(messages.contains(&"WARN first event"));
+    assert!(messages.contains(&"ERROR second event"));
+    assert!(messages.contains(&"INFO third event"));
+    assert_eq!(snapshot.source_status.events_observed, 3);
 }
 
 #[test]

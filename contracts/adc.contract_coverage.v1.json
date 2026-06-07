@@ -34,7 +34,8 @@
         "target/contract-fixtures/cli.obs.artifact_trust.v1.generated.json",
         "target/contract-fixtures/cli.obs.artifact_trust.recorder_loss_report.v1.generated.json",
         "target/contract-fixtures/cli.obs.artifact_trust.recorder_observation_coverage.v1.generated.json",
-        "target/contract-fixtures/cli.obs.artifact_trust.recorder_trigger_decision.v1.generated.json"
+        "target/contract-fixtures/cli.obs.artifact_trust.recorder_trigger_decision.v1.generated.json",
+        "target/contract-fixtures/cli.obs.artifact_trust.recorder_log_events.v1.generated.json"
       ],
       "generated_mcp": ["target/contract-fixtures/mcp.obs.artifact_trust.v1.generated.json"],
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
@@ -51,6 +52,7 @@
         "target/contract-fixtures/cli.obs.ref_resolution.recorder_loss_report.v1.generated.json",
         "target/contract-fixtures/cli.obs.ref_resolution.recorder_observation_coverage.v1.generated.json",
         "target/contract-fixtures/cli.obs.ref_resolution.recorder_trigger_decision.v1.generated.json",
+        "target/contract-fixtures/cli.obs.ref_resolution.recorder_log_events.v1.generated.json",
         "target/contract-fixtures/cli.obs.ref_resolution.recorder_samples.v1.generated.json"
       ],
       "generated_mcp": ["target/contract-fixtures/mcp.obs.ref_resolution.v1.generated.json"],
@@ -88,6 +90,22 @@
       "invariant_tests": ["scripts/contract/validate-contracts.py"],
       "adversarial_tests": ["scripts/contract/tests/validate-contracts-test.sh"],
       "coverage_levels": ["static", "generated_cli", "invariant", "adversarial"]
+    },
+    {
+      "contract": "obs.recorder_log_source_status.v1",
+      "schema": "schemas/obs.recorder_log_source_status.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_log_source_status.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_log_source_status.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "coverage_levels": ["static", "generated_cli", "invariant"]
+    },
+    {
+      "contract": "obs.recorder_blackout_report.v1",
+      "schema": "schemas/obs.recorder_blackout_report.v1.schema.json",
+      "static_fixtures": ["tests/golden/obs.recorder_blackout_report.v1.min.json"],
+      "generated_cli": ["target/contract-fixtures/cli.obs.recorder_blackout_report.v1.generated.json"],
+      "invariant_tests": ["scripts/contract/validate-contracts.py"],
+      "coverage_levels": ["static", "generated_cli", "invariant"]
     },
     {
       "contract": "obs.recorder_budget.v1",
