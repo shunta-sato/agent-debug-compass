@@ -79,13 +79,19 @@ bash scripts/e2e/target/run-target55-resource-discipline-smoke.sh \
   --host target55 \
   --binary-dir target/debug \
   --result-root tmp/target55-resource-discipline-smoke
+bash scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-recorder-load-impact-smoke
 ```
 
 When these are skipped, record the hardware/setup reason in the PR or release
 notes. The target55 resource-discipline smoke is the PR10 hardware gate: it
 checks no-trigger continuous ring write behavior, simulated battery-low
 degradation, marker freeze resource accounting, and bounded recorder refs on a
-configured same-LAN target.
+configured same-LAN target. The target55 load-impact smoke adds explicit
+CPU+memory workload comparison and reports workload slowdown, `adc-targetd` CPU
+seconds, peak RSS, and recorder write categories.
 
 ## Where to Add New Tests
 

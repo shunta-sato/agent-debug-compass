@@ -177,6 +177,22 @@ directory on `target55`, runs a no-trigger continuous recorder check, simulates
 `battery_low`, freezes a marker incident, resolves bounded recorder refs, and
 copies a `summary.json` report back under the result root.
 
+PR10 recorder load-impact smoke on `target55`:
+
+```bash
+cargo build -p adc -p adc-targetd
+bash scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-recorder-load-impact-smoke
+```
+
+This smoke runs the same CPU+memory workload with Flight Recorder disabled,
+enabled normally, and enabled with simulated `battery_low`. It reports workload
+slowdown, `adc-targetd` CPU seconds, peak RSS, and recorder write categories in
+`load_impact_summary.json`. It does not claim battery drain on AC-powered
+targets.
+
 Optional install/provision helpers:
 
 ```bash
