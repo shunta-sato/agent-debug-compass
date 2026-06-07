@@ -38,6 +38,9 @@ pub fn recorder_incident_artifact_ref(incident_id: &str, artifact_name: &str) ->
         | "coverage.json"
         | "loss_report.json"
         | "samples.jsonl"
+        | "log_source_status.json"
+        | "log_events.jsonl"
+        | "blackout_report.json"
         | "marker.json"
         | "trigger_event.json"
         | "trigger_decision.json" => Ok(format!(

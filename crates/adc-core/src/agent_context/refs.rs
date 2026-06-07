@@ -255,6 +255,21 @@ fn recorder_ref_path(
                     "application/jsonl",
                     crate::ContentClass::RecorderSignalSamples,
                 ),
+                "log_source_status.json" => (
+                    "recorder_log_source_status",
+                    "application/json",
+                    crate::ContentClass::RecorderLogSourceStatus,
+                ),
+                "log_events.jsonl" => (
+                    "recorder_log_events",
+                    "application/jsonl",
+                    crate::ContentClass::RecorderLogEvents,
+                ),
+                "blackout_report.json" => (
+                    "recorder_blackout_report",
+                    "application/json",
+                    crate::ContentClass::RecorderBlackoutReport,
+                ),
                 "marker.json" => (
                     "recorder_marker",
                     "application/json",

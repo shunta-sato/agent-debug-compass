@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "obs.recorder_log_source_status.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "source_id",
+    "source_kind",
+    "source_ref",
+    "cursor_mode",
+    "cursor_token",
+    "cursor_confidence",
+    "continuity_state",
+    "capability_status",
+    "permission_status",
+    "last_observed_mono_ns",
+    "events_observed",
+    "events_exported",
+    "events_truncated",
+    "rotation_detected",
+    "blackout_ranges",
+    "artifact_refs",
+    "data_quality"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["obs.recorder_log_source_status.v1"]},
+    "target_id": {"type": "string", "minLength": 1},
+    "source_id": {"type": "string", "minLength": 1},
+    "source_kind": {"type": "string", "enum": ["append_file", "kmsg_fixture", "journald_on_demand", "kmsg_device"]},
+    "source_ref": {"type": "string", "minLength": 1},
+    "cursor_mode": {"type": "string", "enum": ["inotify_append_offset", "append_offset_fallback", "fixture_append_offset", "journal_cursor_on_demand", "kmsg_sequence_future", "unsupported", "unknown"]},
+    "cursor_token": {"type": ["string", "null"]},
+    "cursor_confidence": {"type": "string", "enum": ["unknown", "low", "medium", "high"]},
+    "continuity_state": {"type": "string", "enum": ["continuous", "silent_with_continuity", "gap_detected", "rotated", "unavailable", "permission_denied", "not_expected", "unknown"]},
+    "capability_status": {"type": "string", "enum": ["supported", "degraded", "unavailable", "requires_privilege", "unsafe", "unknown"]},
+    "permission_status": {"type": "string", "enum": ["readable", "permission_denied", "unavailable", "unknown"]},
+    "last_observed_mono_ns": {"type": ["integer", "null"], "minimum": 0},
+    "events_observed": {"type": "integer", "minimum": 0},
+    "events_exported": {"type": "integer", "minimum": 0},
+    "events_truncated": {"type": "integer", "minimum": 0},
+    "rotation_detected": {"type": "boolean"},
+    "blackout_ranges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start_mono_ns", "end_mono_ns"],
+        "properties": {
+          "start_mono_ns": {"type": "integer", "minimum": 0},
+          "end_mono_ns": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "artifact_refs": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
+  }
+}

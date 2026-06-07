@@ -15,8 +15,8 @@ use crate::{
     build_overhead_report, collector_enabled_by_power_mode,
     collectors::{CpuSample, MemorySample, NetworkDeviceSample},
     default_recorder_budget, default_target_id, drain_pending_recorder_markers, evaluate_trigger,
-    freeze_recorder_marker, freeze_recorder_trigger_with_decision, parse_meminfo, parse_net_dev,
-    parse_proc_stat,
+    freeze_recorder_marker_with_log_snapshot, freeze_recorder_trigger_with_decision,
+    log_source_status_has_continuity, parse_meminfo, parse_net_dev, parse_proc_stat,
     profile::{load_profile, RuleType, TriggerRule},
     recorder_budget_for_power_mode, recorder_degradation_decisions_for_power_mode,
     recorder_expected_signals_for_collectors, recorder_freeze_decision_for_refused_trigger,
@@ -26,12 +26,13 @@ use crate::{
     recorder_power_snapshot_from_sysfs, recorder_resource_status_for_service_run,
     recorder_ring_capacity_for_budget, recorder_status_from_input, snapshot,
     trigger_decision_for_budget_refusal, trigger_decision_for_rule,
-    trigger_decision_with_runtime_state, write_evidence_index, write_recorder_marker_result,
-    write_recorder_status_artifact, write_recorder_trigger_decision, AdcError, AdcResult,
-    ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
-    OverheadSample, Profile, RecorderAdmissionDecision, RecorderBudgetStatus,
-    RecorderCoverageConfidence, RecorderCoverageState, RecorderDegradationDecision,
-    RecorderExpectedSignal, RecorderOverheadAccounting, RecorderOverheadScope, RecorderPowerMode,
+    trigger_decision_with_runtime_state, unavailable_app_log_snapshot, write_evidence_index,
+    write_recorder_marker_result, write_recorder_status_artifact, write_recorder_trigger_decision,
+    AdcError, AdcResult, AppendOnlyLogCursor, ArtifactManifest, ClockSource, DataQuality,
+    EventEnvelope, EvidenceBuildInput, OverheadBudget, OverheadSample, Profile,
+    RecorderAdmissionDecision, RecorderBudgetStatus, RecorderCoverageConfidence,
+    RecorderCoverageState, RecorderDegradationDecision, RecorderExpectedSignal,
+    RecorderLogSnapshot, RecorderOverheadAccounting, RecorderOverheadScope, RecorderPowerMode,
     RecorderPowerSnapshot, RecorderResourceRates, RecorderRing, RecorderSample,
     RecorderSampleRateGovernor, RecorderSignalCoverage, RecorderSignalSample, RecorderStatusInput,
     RecorderStatusWriteGovernor, TimeRangeNs, TriggerDecision, TriggerEvaluation, TriggerInput,
@@ -70,6 +71,7 @@ struct LiveSample {
     memory: Option<MemorySample>,
     network: Option<NetworkDeviceSample>,
     kmsg: Option<KmsgSample>,
+    app_log: Option<AppLogSample>,
     data_quality: DataQuality,
 }
 
@@ -78,6 +80,11 @@ struct KmsgSample {
     severity: String,
     message: String,
     source: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AppLogSample {
+    source_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -322,6 +329,8 @@ pub fn run_service_for(
     let control_interval = Duration::from_millis(RECORDER_CONTROL_TICK_MS);
     let mut next_semantic_sample_at: Option<Instant> = None;
     let mut last_kmsg_event_key: Option<String> = None;
+    let mut app_log_cursor: Option<AppendOnlyLogCursor> = None;
+    let mut latest_log_snapshot: Option<RecorderLogSnapshot> = None;
 
     while Instant::now() < deadline || iterations == 0 {
         iterations += 1;
@@ -379,6 +388,8 @@ pub fn run_service_for(
             recorder_profile_id = Some(profile_id.clone());
             next_semantic_sample_at = None;
             last_kmsg_event_key = None;
+            app_log_cursor = None;
+            latest_log_snapshot = None;
         }
         let mut sample_for_triggers = None;
         let mut status_time_mono_ns = loop_mono_ns;
@@ -413,6 +424,20 @@ pub fn run_service_for(
                 recorder_accounting.record_accepted_sample();
             }
             sample_for_triggers = Some(kmsg_sample);
+        }
+        if let Some((log_sample, log_snapshot)) = collect_app_log_cursor_sample(
+            &profile,
+            power_mode,
+            &mut app_log_cursor,
+            status_time_mono_ns,
+        ) {
+            if let Some(log_sample) = log_sample {
+                recorder_accounting.observe_sample_time(log_sample.time_mono_ns);
+                if push_recorder_samples(&mut recorder_ring, &log_sample) {
+                    recorder_accounting.record_accepted_sample();
+                }
+            }
+            latest_log_snapshot = Some(log_snapshot);
         }
         if recorder_status_writer.should_write(status_time_mono_ns, profile_changed) {
             let status_bytes = write_live_recorder_status(LiveRecorderStatusInput {
@@ -449,13 +474,14 @@ pub fn run_service_for(
                 continue;
             }
             let window_id = format!("win-{}", marker.marker_id);
-            let freeze = freeze_recorder_marker(
+            let freeze = freeze_recorder_marker_with_log_snapshot(
                 artifact_root,
                 &incident_id,
                 &window_id,
                 &marker,
                 &recorder_ring,
                 &recorder_budget,
+                latest_log_snapshot.as_ref(),
             )?;
             let (artifact_bytes, samples_jsonl_bytes) =
                 recorder_incident_byte_counts(&freeze.run_dir)?;
@@ -735,6 +761,7 @@ fn collect_live_sample(profile: &Profile) -> LiveSample {
         memory,
         network,
         kmsg,
+        app_log: None,
         data_quality,
     }
 }
@@ -753,7 +780,16 @@ fn semantic_profile_for_resource_policy(profile: &Profile, mode: RecorderPowerMo
     adjusted
         .always_on
         .collectors
-        .retain(|collector| collector != "kmsg");
+        .retain(|collector| collector != "kmsg" && collector != "app_log");
+    adjusted
+}
+
+fn app_log_profile_for_resource_policy(profile: &Profile, mode: RecorderPowerMode) -> Profile {
+    let mut adjusted = profile_for_resource_policy(profile, mode);
+    adjusted
+        .always_on
+        .collectors
+        .retain(|collector| collector == "app_log");
     adjusted
 }
 
@@ -793,11 +829,63 @@ fn kmsg_event_key(sample: &KmsgSample) -> String {
     format!("{}:{}:{}", sample.source, sample.severity, sample.message)
 }
 
+fn collect_app_log_cursor_sample(
+    profile: &Profile,
+    mode: RecorderPowerMode,
+    cursor: &mut Option<AppendOnlyLogCursor>,
+    time_mono_ns: u64,
+) -> Option<(Option<LiveSample>, RecorderLogSnapshot)> {
+    let app_log_profile = app_log_profile_for_resource_policy(profile, mode);
+    if !app_log_profile
+        .always_on
+        .collectors
+        .iter()
+        .any(|collector| collector == "app_log")
+    {
+        return None;
+    }
+    let path = match env::var_os("ADC_RECORDER_APP_LOG").map(PathBuf::from) {
+        Some(path) => path,
+        None => {
+            return Some((
+                None,
+                unavailable_app_log_snapshot(
+                    &default_target_id(),
+                    time_mono_ns,
+                    "app_log expected by profile but ADC_RECORDER_APP_LOG is not configured",
+                ),
+            ));
+        }
+    };
+    if cursor.is_none() {
+        *cursor = Some(AppendOnlyLogCursor::new_app_log(path));
+    }
+    let cursor = cursor.as_mut()?;
+    let snapshot = cursor.poll(&default_target_id(), time_mono_ns);
+    let sample = if log_source_status_has_continuity(&snapshot.source_status) {
+        Some(LiveSample {
+            time_mono_ns,
+            cpu: None,
+            memory: None,
+            network: None,
+            kmsg: None,
+            app_log: Some(AppLogSample {
+                source_id: "app_log".to_string(),
+            }),
+            data_quality: snapshot.source_status.data_quality.clone(),
+        })
+    } else {
+        None
+    };
+    Some((sample, snapshot))
+}
+
 fn sample_has_recorder_signals(sample: &LiveSample) -> bool {
     sample.cpu.is_some()
         || sample.memory.is_some()
         || sample.network.is_some()
         || sample.kmsg.is_some()
+        || sample.app_log.is_some()
 }
 
 fn pressure_safe_semantic_sample_interval_ms(
@@ -818,7 +906,7 @@ fn effective_interval_ms_for_signal(
     configured_interval_ms: u64,
     semantic_interval_ms: u64,
 ) -> u64 {
-    if signal_id == "kmsg.cursor" {
+    if matches!(signal_id, "kmsg.cursor" | "app_log.cursor") {
         configured_interval_ms.max(RECORDER_CONTROL_TICK_MS)
     } else {
         semantic_interval_ms
@@ -1158,6 +1246,12 @@ fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) -> bool {
     if sample.kmsg.is_some() {
         signals.push(RecorderSignalSample {
             signal_id: "kmsg.cursor".to_string(),
+            value: 1.0,
+        });
+    }
+    if sample.app_log.is_some() {
+        signals.push(RecorderSignalSample {
+            signal_id: "app_log.cursor".to_string(),
             value: 1.0,
         });
     }

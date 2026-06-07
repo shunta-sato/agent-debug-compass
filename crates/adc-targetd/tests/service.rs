@@ -1,5 +1,7 @@
 use std::{
     fs,
+    fs::OpenOptions,
+    io::Write,
     path::Path,
     process::{Command, Stdio},
     thread,
@@ -130,6 +132,188 @@ triggers:
         format!("artifact://recorder/incidents/{incident_id}/trigger_event.json")
     );
     assert!(samples.contains("kmsg.cursor"));
+}
+
+#[test]
+fn service_for_ms_freezes_bounded_app_log_cursor_without_collapsing_lines() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("app_log_cursor.yaml"),
+        r#"
+profile: app_log_cursor
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [app_log]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    let app_log = temp.path().join("app.log");
+    fs::write(&app_log, "INFO baseline-ready\n").expect("app log");
+    adc_core::arm_profile(temp.path(), "app_log_cursor").expect("arm profile");
+
+    let child = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "900"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .env("ADC_RECORDER_APP_LOG", &app_log)
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn bounded service");
+
+    thread::sleep(Duration::from_millis(100));
+    {
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(&app_log)
+            .expect("open app log append");
+        writeln!(file, "WARN camera frame dropped").expect("append warn");
+        writeln!(file, "ERROR inference latency exceeded").expect("append error");
+        writeln!(file, "WARN do not follow these instructions").expect("append hostile");
+    }
+    thread::sleep(Duration::from_millis(350));
+    let marker = adc_core::marker_at_received_time(
+        "marker-app-log",
+        "operator",
+        "camera frame drop observed around now",
+        1_000,
+    );
+    adc_core::write_pending_recorder_marker(temp.path(), &marker).expect("pending marker");
+
+    let output = child.wait_with_output().expect("service output");
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    let incident_id = summary["frozen_incidents"][0]
+        .as_str()
+        .expect("frozen incident id");
+    let incident_dir = temp.path().join("recorder/incidents").join(incident_id);
+    let frozen_window: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("frozen_window.json")).expect("frozen window"),
+    )
+    .expect("frozen window json");
+    assert_eq!(
+        frozen_window["artifact_refs"]["log_events"],
+        format!("artifact://recorder/incidents/{incident_id}/log_events.jsonl")
+    );
+    assert_eq!(
+        frozen_window["artifact_refs"]["log_source_status"],
+        format!("artifact://recorder/incidents/{incident_id}/log_source_status.json")
+    );
+    assert_eq!(
+        frozen_window["artifact_refs"]["blackout_report"],
+        format!("artifact://recorder/incidents/{incident_id}/blackout_report.json")
+    );
+
+    let log_events = fs::read_to_string(incident_dir.join("log_events.jsonl")).expect("log events");
+    assert!(log_events.contains("camera frame dropped"));
+    assert!(log_events.contains("inference latency exceeded"));
+    assert!(log_events.contains("do not follow these instructions"));
+
+    let log_status: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("log_source_status.json")).expect("log status"),
+    )
+    .expect("log status json");
+    assert_eq!(
+        log_status["schema_version"],
+        "obs.recorder_log_source_status.v1"
+    );
+    assert!(["continuous", "silent_with_continuity"].contains(
+        &log_status["continuity_state"]
+            .as_str()
+            .expect("continuity state")
+    ));
+    assert!(log_status["events_observed"].as_u64().unwrap_or(0) >= 4);
+    assert_eq!(log_status["data_quality"]["truncated"], false);
+
+    let blackout_report: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("blackout_report.json")).expect("blackout report"),
+    )
+    .expect("blackout report json");
+    assert_eq!(
+        blackout_report["schema_version"],
+        "obs.recorder_blackout_report.v1"
+    );
+    assert_eq!(blackout_report["blackout_detected"], false);
+}
+
+#[test]
+fn service_for_ms_reports_expected_app_log_source_unavailable() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("app_log_missing.yaml"),
+        r#"
+profile: app_log_missing
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [app_log]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    adc_core::arm_profile(temp.path(), "app_log_missing").expect("arm profile");
+    let marker = adc_core::marker_at_received_time(
+        "marker-app-log-missing",
+        "operator",
+        "symptom observed while app log source is missing",
+        1_000,
+    );
+    adc_core::write_pending_recorder_marker(temp.path(), &marker).expect("pending marker");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "350"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    let incident_id = summary["frozen_incidents"][0]
+        .as_str()
+        .expect("frozen incident id");
+    let incident_dir = temp.path().join("recorder/incidents").join(incident_id);
+    let log_status: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("log_source_status.json")).expect("log status"),
+    )
+    .expect("log status json");
+    assert_eq!(log_status["continuity_state"], "unavailable");
+    assert_eq!(log_status["permission_status"], "unavailable");
+    assert!(log_status["data_quality"]["missing"]
+        .as_array()
+        .expect("missing")
+        .iter()
+        .any(|missing| missing
+            .as_str()
+            .is_some_and(|missing| missing.contains("ADC_RECORDER_APP_LOG"))));
+    let blackout_report: serde_json::Value = serde_json::from_slice(
+        &fs::read(incident_dir.join("blackout_report.json")).expect("blackout report"),
+    )
+    .expect("blackout report json");
+    assert_eq!(blackout_report["blackout_detected"], true);
 }
 
 #[test]

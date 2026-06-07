@@ -223,6 +223,11 @@ fn expected_signal_metadata(signal_id: &str) -> (String, RecorderLayer, Option<&
             RecorderLayer::Kernel,
             Some("linux.kmsg_or_fixture"),
         ),
+        "app_log.cursor" => (
+            "app_log".to_string(),
+            RecorderLayer::App,
+            Some("linux.regular_file_log"),
+        ),
         "thermal.zone" => (
             "thermal".to_string(),
             RecorderLayer::Hardware,
@@ -370,6 +375,7 @@ fn signal_id_for_collector(collector: &str) -> Option<&'static str> {
         "memory" => Some("memory.summary"),
         "network" => Some("network.counters"),
         "kmsg" => Some("kmsg.cursor"),
+        "app_log" => Some("app_log.cursor"),
         "thermal" => Some("thermal.zone"),
         "cpufreq" => Some("cpufreq.summary"),
         "process" => Some("process.topN"),

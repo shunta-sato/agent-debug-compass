@@ -46,6 +46,9 @@ pub enum ContentClass {
     RecorderIncident,
     RecorderFrozenWindow,
     RecorderObservationCoverage,
+    RecorderLogSourceStatus,
+    RecorderLogEvents,
+    RecorderBlackoutReport,
     RecorderMarkerResult,
     LossReport,
     TriggerEvent,
@@ -1017,6 +1020,8 @@ fn trust_level_for_content_class(content_class: ContentClass) -> TrustLevel {
         | ContentClass::RecorderIncident
         | ContentClass::RecorderFrozenWindow
         | ContentClass::RecorderObservationCoverage
+        | ContentClass::RecorderLogSourceStatus
+        | ContentClass::RecorderBlackoutReport
         | ContentClass::LossReport
         | ContentClass::TriggerEvent
         | ContentClass::TriggerDecision
@@ -1025,7 +1030,8 @@ fn trust_level_for_content_class(content_class: ContentClass) -> TrustLevel {
             TrustLevel::UntrustedUserProvidedText
         }
         ContentClass::Binary => TrustLevel::OpaqueArtifact,
-        ContentClass::Log
+        ContentClass::RecorderLogEvents
+        | ContentClass::Log
         | ContentClass::Journal
         | ContentClass::DomainEvent
         | ContentClass::Config => TrustLevel::UntrustedTargetText,

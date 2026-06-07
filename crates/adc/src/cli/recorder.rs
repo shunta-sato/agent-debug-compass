@@ -209,6 +209,12 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
     };
     let samples_ref = adc_core::recorder_incident_artifact_ref(incident_id, "samples.jsonl")
         .map_err(|err| err.to_string())?;
+    let log_source_status_ref =
+        optional_incident_artifact_ref(&incident_dir, incident_id, "log_source_status.json")?;
+    let log_events_ref =
+        optional_incident_artifact_ref(&incident_dir, incident_id, "log_events.jsonl")?;
+    let blackout_report_ref =
+        optional_incident_artifact_ref(&incident_dir, incident_id, "blackout_report.json")?;
     let response = serde_json::json!({
         "schema_version": "obs.recorder_incident_resolution.v1",
         "incident_id": incident_id,
@@ -218,6 +224,9 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
         "coverage_ref": coverage_ref,
         "trigger_decision_ref": trigger_decision_ref,
         "samples_ref": samples_ref,
+        "log_source_status_ref": log_source_status_ref,
+        "log_events_ref": log_events_ref,
+        "blackout_report_ref": blackout_report_ref,
         "marker": marker,
         "trigger_event": trigger_event,
         "trigger_decision": trigger_decision,
@@ -237,6 +246,19 @@ fn recorder_incident_get(args: &[String]) -> Result<(), String> {
         .map_err(|err| format!("failed to serialize recorder incident: {err}"))?;
     println!();
     Ok(())
+}
+
+fn optional_incident_artifact_ref(
+    incident_dir: &Path,
+    incident_id: &str,
+    artifact_name: &str,
+) -> Result<Option<String>, String> {
+    if !incident_dir.join(artifact_name).is_file() {
+        return Ok(None);
+    }
+    adc_core::recorder_incident_artifact_ref(incident_id, artifact_name)
+        .map(Some)
+        .map_err(|err| err.to_string())
 }
 
 fn list_recorder_incident_ids(artifact_root: &Path) -> Vec<String> {
