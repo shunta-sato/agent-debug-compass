@@ -75,10 +75,29 @@ Examples:
 bash scripts/e2e/target/run-pi5-release-smoke.sh
 bash scripts/e2e/target/run-target-mcp-fleet-smoke.sh
 bash scripts/e2e/target/run-perf-test.sh
+bash scripts/e2e/target/run-target55-resource-discipline-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-resource-discipline-smoke
+bash scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-recorder-load-impact-smoke
 ```
 
 When these are skipped, record the hardware/setup reason in the PR or release
-notes.
+notes. The target55 resource-discipline smoke is the PR10 hardware gate: it
+checks no-trigger continuous ring write behavior, simulated battery-low
+degradation, marker freeze resource accounting, and bounded recorder refs on a
+configured same-LAN target. The target55 load-impact smoke adds explicit
+CPU+memory workload comparison and reports workload slowdown, `adc-targetd` CPU
+seconds/ratio, peak RSS, recorder write categories, `deployability_passed`, and
+`resource_violation`.
+
+The default target55 load-impact smoke is production-safe deployability
+evidence. Use `--evaluation-mode high_frequency_stress --profile-interval-ms 10`
+only to record aggressive-profile resource impact; stress findings are not
+production-safe evidence.
 
 ## Where to Add New Tests
 

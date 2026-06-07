@@ -19,9 +19,11 @@ The `camera_inference_degradation_flight_recorder` scenario also compares:
 - ADC Flight Recorder with a retained Tx pre-window.
 
 The Flight Recorder benchmark does not score root-cause accuracy. It scores
-whether pre-window evidence, loss reports, and bounded refs give the Agent a
-better falsifiable investigation starting point without exceeding recorder
-overhead budget.
+whether pre-window evidence, loss reports, coverage, bounded refs, and resource
+discipline give the Agent a better falsifiable investigation starting point
+without exceeding recorder overhead or resource budgets. In particular, the
+Flight Recorder scenario asserts that the continuous memory ring does not create
+a continuous disk-write path.
 
 Run:
 

@@ -162,6 +162,54 @@ bash scripts/e2e/target/run-target-mcp-fleet-smoke.sh
 bash scripts/e2e/target/run-perf-test.sh
 ```
 
+PR10 recorder resource discipline on `target55`:
+
+```bash
+cargo build -p adc -p adc-targetd
+bash scripts/e2e/target/run-target55-resource-discipline-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-resource-discipline-smoke
+```
+
+This smoke copies the local `adc` and `adc-targetd` binaries to a temporary
+directory on `target55`, runs a no-trigger continuous recorder check, simulates
+`battery_low`, freezes a marker incident, resolves bounded recorder refs, and
+copies a `summary.json` report back under the result root.
+
+PR10 recorder load-impact smoke on `target55`:
+
+```bash
+cargo build -p adc -p adc-targetd
+bash scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-recorder-load-impact-smoke
+```
+
+By default this is a production-safe deployability smoke. It uses a low-rate
+recorder profile and fails if `adc-targetd` exceeds the production CPU threshold
+or writes through the continuous memory ring. It reports `deployability_passed`,
+`resource_violation`, workload slowdown, `adc-targetd` CPU seconds/ratio, peak
+RSS, and recorder write categories in `load_impact_summary.json`. It does not
+claim battery drain on AC-powered targets.
+
+High-frequency always-on profiles are measured separately as stress findings,
+not as deployability evidence:
+
+```bash
+bash scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh \
+  --host target55 \
+  --binary-dir target/debug \
+  --result-root tmp/target55-recorder-load-impact-stress \
+  --profile-interval-ms 10 \
+  --evaluation-mode high_frequency_stress
+```
+
+If this stress run reports `deployability_passed=false`, that is a known
+resource discipline finding: 10ms global polling is not accepted as an
+always-on production mode.
+
 Optional install/provision helpers:
 
 ```bash

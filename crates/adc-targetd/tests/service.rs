@@ -217,6 +217,148 @@ triggers: []
 }
 
 #[test]
+fn service_for_ms_reports_resource_status_without_continuous_ring_disk_writes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("recorder_memory.yaml"),
+        r#"
+profile: recorder_memory
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    adc_core::arm_profile(temp.path(), "recorder_memory").expect("arm profile");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "80"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let recorder_status: serde_json::Value = serde_json::from_slice(
+        &fs::read(temp.path().join("recorder/status.json")).expect("recorder status"),
+    )
+    .expect("recorder status json");
+    let resource_status = &recorder_status["resource_status"];
+    assert_eq!(
+        resource_status["schema_version"],
+        "obs.recorder_resource_status.v1"
+    );
+    assert_eq!(resource_status["continuous_ring_disk_write_bytes"], 0);
+    assert_eq!(resource_status["frozen_artifact_write_bytes"], 0);
+    assert_eq!(resource_status["network_upload_bytes"], 0);
+    assert!(resource_status["data_quality"]["notes"]
+        .as_array()
+        .expect("resource notes")
+        .iter()
+        .any(|note| note
+            .as_str()
+            .is_some_and(|note| note.contains("memory-backed"))));
+}
+
+#[test]
+fn service_for_ms_battery_low_policy_marks_disabled_low_priority_signal_in_coverage() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("recorder_network_memory.yaml"),
+        r#"
+profile: recorder_network_memory
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory, network]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    adc_core::arm_profile(temp.path(), "recorder_network_memory").expect("arm profile");
+    let marker = adc_core::marker_at_received_time(
+        "marker-battery-low",
+        "operator",
+        "frame drop while battery is low",
+        1_000,
+    );
+    adc_core::write_pending_recorder_marker(temp.path(), &marker).expect("pending marker");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "120"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .env("ADC_RECORDER_POWER_MODE", "battery_low")
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("service summary json");
+    let incident_id = summary["frozen_incidents"][0]
+        .as_str()
+        .expect("frozen incident id");
+    let coverage: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            temp.path()
+                .join("recorder/incidents")
+                .join(incident_id)
+                .join("coverage.json"),
+        )
+        .expect("coverage"),
+    )
+    .expect("coverage json");
+    let signals = coverage["signals"].as_array().expect("coverage signals");
+    let network = signals
+        .iter()
+        .find(|signal| signal["signal_id"] == "network.counters")
+        .expect("network coverage");
+    assert_eq!(network["coverage_state"], "missing");
+    assert!(network["loss_reasons"]
+        .as_array()
+        .expect("loss reasons")
+        .iter()
+        .any(|reason| reason == "battery_low_policy"));
+
+    let recorder_status: serde_json::Value = serde_json::from_slice(
+        &fs::read(temp.path().join("recorder/status.json")).expect("recorder status"),
+    )
+    .expect("recorder status json");
+    let resource_status = &recorder_status["resource_status"];
+    assert_eq!(resource_status["policy_mode"], "battery_low");
+    assert!(resource_status["data_quality"]["throttled"].as_bool() == Some(true));
+    assert!(
+        resource_status["degradation_decisions"][0]["affected_signals"]
+            .as_array()
+            .expect("affected signals")
+            .iter()
+            .any(|signal| signal == "network.counters")
+    );
+}
+
+#[test]
 fn service_for_ms_refreshes_expected_signal_model_after_profile_switch() {
     let temp = tempfile::tempdir().expect("tempdir");
     let profile_dir = temp.path().join("profiles");

@@ -41,6 +41,20 @@ pub(super) fn loss_report_for_buffer_with_quality(
                 .missing
                 .extend(signal.data_quality.missing.clone());
         }
+        for missing in &signal.data_quality.missing {
+            if missing.contains("battery_low policy")
+                && !reasons.iter().any(|reason| reason == "battery_low_policy")
+            {
+                reasons.push("battery_low_policy".to_string());
+            }
+            if missing.contains("battery_critical policy")
+                && !reasons
+                    .iter()
+                    .any(|reason| reason == "battery_critical_policy")
+            {
+                reasons.push("battery_critical_policy".to_string());
+            }
+        }
         collector_loss.push(CollectorLoss {
             collector_id: signal.signal_id.clone(),
             expected_samples: signal.expected_samples,

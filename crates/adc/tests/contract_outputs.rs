@@ -30,6 +30,10 @@ fn generated_cli_outputs_validate_against_public_contracts() {
         &recorder_status["overhead"],
     );
     write_fixture(
+        "cli.obs.recorder_resource_status.v1.generated.json",
+        &recorder_status["resource_status"],
+    );
+    write_fixture(
         "cli.obs.recorder_budget_status.v1.generated.json",
         &recorder_status["budget_status"],
     );

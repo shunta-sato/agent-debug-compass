@@ -15,6 +15,7 @@
     "budget",
     "budget_status",
     "overhead",
+    "resource_status",
     "data_quality"
   ],
   "properties": {
@@ -40,6 +41,7 @@
     "budget": {"$ref": "obs.recorder_budget.v1.schema.json"},
     "budget_status": {"$ref": "obs.recorder_budget_status.v1.schema.json"},
     "overhead": {"$ref": "obs.recorder_overhead.v1.schema.json"},
+    "resource_status": {"$ref": "obs.recorder_resource_status.v1.schema.json"},
     "data_quality": {"$ref": "obs.data_quality.v1.schema.json"}
   }
 }
