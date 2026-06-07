@@ -165,9 +165,13 @@ fn expected_signal_for_status(
         .map(|signal| signal.configured_interval_ms)
         .unwrap_or(signal_status.configured_interval_ms)
         .max(1);
-    let effective_interval_ms = configured_interval_ms.max(effective_recorder_interval_ms(
-        budget.max_samples_per_second,
-    ));
+    let model_effective_interval_ms = model
+        .map(|signal| signal.effective_interval_ms)
+        .unwrap_or(configured_interval_ms)
+        .max(1);
+    let effective_interval_ms = configured_interval_ms.max(model_effective_interval_ms).max(
+        effective_recorder_interval_ms(budget.max_samples_per_second),
+    );
     let expected_samples = expected_samples_for_interval(time_range, effective_interval_ms);
     let mut data_quality = merge_data_quality(&expected.data_quality, &signal_status.data_quality);
     data_quality.notes.push(format!(

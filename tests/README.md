@@ -96,8 +96,8 @@ seconds/ratio, peak RSS, recorder write categories, `deployability_passed`, and
 
 The default target55 load-impact smoke is production-safe deployability
 evidence. Use `--evaluation-mode high_frequency_stress --profile-interval-ms 10`
-only to record aggressive-profile resource impact; stress findings are not
-production-safe evidence.
+to verify that aggressive configured intervals are pressure-safe clamped for
+semantic counter sampling and do not become global high-frequency polling.
 
 ## Where to Add New Tests
 

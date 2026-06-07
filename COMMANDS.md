@@ -194,8 +194,9 @@ or writes through the continuous memory ring. It reports `deployability_passed`,
 RSS, and recorder write categories in `load_impact_summary.json`. It does not
 claim battery drain on AC-powered targets.
 
-High-frequency always-on profiles are measured separately as stress findings,
-not as deployability evidence:
+High-frequency configured profiles are measured separately as stress checks.
+The pressure-safe scheduler should clamp semantic counter sampling and keep the
+run deployable while preserving the configured/effective interval distinction:
 
 ```bash
 bash scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh \
@@ -207,8 +208,8 @@ bash scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh \
 ```
 
 If this stress run reports `deployability_passed=false`, that is a known
-resource discipline finding: 10ms global polling is not accepted as an
-always-on production mode.
+resource discipline regression: aggressive configured intervals should not force
+global high-frequency semantic polling in the default always-on recorder path.
 
 Optional install/provision helpers:
 

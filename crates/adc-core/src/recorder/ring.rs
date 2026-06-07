@@ -83,6 +83,10 @@ impl RecorderRing {
         self.expected_signals.values().cloned().collect()
     }
 
+    pub fn expected_signal(&self, signal_id: &str) -> Option<&RecorderExpectedSignal> {
+        self.expected_signals.get(signal_id)
+    }
+
     pub fn record_throttled_sample(&mut self, note: impl Into<String>) {
         self.throttled_sample_count = self.throttled_sample_count.saturating_add(1);
         self.throttle_notes.insert(note.into());
