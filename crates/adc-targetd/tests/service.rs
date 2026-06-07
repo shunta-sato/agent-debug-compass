@@ -192,6 +192,24 @@ triggers: []
         .expect("collector loss")
         .iter()
         .any(|loss| loss["collector_id"] == "memory.summary"));
+    let coverage: serde_json::Value =
+        serde_json::from_slice(&fs::read(incident_dir.join("coverage.json")).expect("coverage"))
+            .expect("coverage json");
+    let memory_coverage = coverage["signals"]
+        .as_array()
+        .expect("coverage signals")
+        .iter()
+        .find(|signal| signal["signal_id"] == "memory.summary")
+        .expect("memory coverage");
+    assert_eq!(memory_coverage["configured_interval_ms"], 10);
+    assert_eq!(memory_coverage["effective_interval_ms"], 1000);
+    assert!(memory_coverage["data_quality"]["notes"]
+        .as_array()
+        .expect("coverage notes")
+        .iter()
+        .any(|note| note
+            .as_str()
+            .is_some_and(|note| note.contains("pressure-safe scheduler"))));
     let recorder_status: serde_json::Value = serde_json::from_slice(
         &fs::read(temp.path().join("recorder/status.json")).expect("recorder status"),
     )
@@ -213,7 +231,7 @@ triggers: []
         .iter()
         .any(|note| note
             .as_str()
-            .is_some_and(|note| note.contains("max_samples_per_second"))));
+            .is_some_and(|note| note.contains("pressure-safe scheduler"))));
 }
 
 #[test]
@@ -270,6 +288,61 @@ triggers: []
         .any(|note| note
             .as_str()
             .is_some_and(|note| note.contains("memory-backed"))));
+}
+
+#[test]
+fn service_for_ms_clamps_high_frequency_profile_to_pressure_safe_sampling() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let profile_dir = temp.path().join("profiles");
+    fs::create_dir_all(&profile_dir).expect("profile dir");
+    fs::write(
+        profile_dir.join("recorder_memory.yaml"),
+        r#"
+profile: recorder_memory
+sampling:
+  interval_ms: 10
+always_on:
+  collectors: [memory]
+budgets:
+  max_daemon_cpu_percent: 3
+  max_memory_mb: 128
+  max_artifact_mb_per_run: 16
+triggers: []
+"#,
+    )
+    .expect("profile");
+    adc_core::arm_profile(temp.path(), "recorder_memory").expect("arm profile");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adc-targetd"))
+        .args(["--service-for-ms", "1200"])
+        .env("ADC_HOME", temp.path())
+        .env("ADC_PROFILE_DIR", &profile_dir)
+        .output()
+        .expect("run bounded service");
+
+    assert!(
+        output.status.success(),
+        "service-for-ms failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let recorder_status: serde_json::Value = serde_json::from_slice(
+        &fs::read(temp.path().join("recorder/status.json")).expect("recorder status"),
+    )
+    .expect("recorder status json");
+    let resource_status = &recorder_status["resource_status"];
+    let sample_rate = resource_status["recorder_sample_rate_hz"]
+        .as_f64()
+        .expect("sample rate");
+    assert!(
+        sample_rate < 5.0,
+        "10ms profile should not force high-frequency semantic sampling; got {sample_rate}Hz"
+    );
+    assert!(recorder_status["buffer_status"]["signals"]
+        .as_array()
+        .expect("signals")
+        .iter()
+        .any(|signal| signal["signal_id"] == "memory.summary"
+            && signal["configured_interval_ms"] == 10));
 }
 
 #[test]

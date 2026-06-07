@@ -39,9 +39,9 @@ battery_low policy. It is intentionally rootless and uses SSH only to deploy
 fixed binaries/scripts and collect reports.
 
 The default production_safe mode is a deployability smoke and uses a low-rate
-profile. high_frequency_stress records resource impact for aggressive profiles
-such as 10ms global polling, but it does not classify that result as
-deployability evidence.
+profile. high_frequency_stress verifies that aggressive configured intervals
+remain pressure-safe by clamping semantic counter sampling instead of forcing
+global high-frequency polling.
 USAGE
 }
 

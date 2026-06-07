@@ -31,11 +31,15 @@ use crate::{
     ArtifactManifest, ClockSource, DataQuality, EventEnvelope, EvidenceBuildInput, OverheadBudget,
     OverheadSample, Profile, RecorderAdmissionDecision, RecorderBudgetStatus,
     RecorderCoverageConfidence, RecorderCoverageState, RecorderDegradationDecision,
-    RecorderOverheadAccounting, RecorderOverheadScope, RecorderPowerMode, RecorderPowerSnapshot,
-    RecorderResourceRates, RecorderRing, RecorderSample, RecorderSampleRateGovernor,
-    RecorderSignalCoverage, RecorderSignalSample, RecorderStatusInput, RecorderStatusWriteGovernor,
-    TimeRangeNs, TriggerDecision, TriggerEvaluation, TriggerInput, TriggerRuntimeState,
+    RecorderExpectedSignal, RecorderOverheadAccounting, RecorderOverheadScope, RecorderPowerMode,
+    RecorderPowerSnapshot, RecorderResourceRates, RecorderRing, RecorderSample,
+    RecorderSampleRateGovernor, RecorderSignalCoverage, RecorderSignalSample, RecorderStatusInput,
+    RecorderStatusWriteGovernor, TimeRangeNs, TriggerDecision, TriggerEvaluation, TriggerInput,
+    TriggerRuntimeState,
 };
+
+const RECORDER_CONTROL_TICK_MS: u64 = 250;
+const RECORDER_PRESSURE_SAFE_SEMANTIC_SAMPLE_FLOOR_MS: u64 = 1_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DaemonState {
@@ -110,10 +114,15 @@ struct RecorderRuntimeAccounting {
 }
 
 impl RecorderRuntimeAccounting {
-    fn observe_sample_time(&mut self, mono_ns: u64) {
+    fn record_control_iteration(&mut self, mono_ns: u64) {
         self.since_mono_ns.get_or_insert(mono_ns);
         self.through_mono_ns = Some(mono_ns);
         self.loop_iterations = self.loop_iterations.saturating_add(1);
+    }
+
+    fn observe_sample_time(&mut self, mono_ns: u64) {
+        self.since_mono_ns.get_or_insert(mono_ns);
+        self.through_mono_ns = Some(mono_ns);
     }
 
     fn record_accepted_sample(&mut self) {
@@ -310,10 +319,15 @@ pub fn run_service_for(
         clock_confidence: crate::ClockConfidence::Medium,
         ..Default::default()
     };
+    let control_interval = Duration::from_millis(RECORDER_CONTROL_TICK_MS);
+    let mut next_semantic_sample_at: Option<Instant> = None;
+    let mut last_kmsg_event_key: Option<String> = None;
 
     while Instant::now() < deadline || iterations == 0 {
         iterations += 1;
-        let state = initialize_state(artifact_root)?;
+        let state = read_state(artifact_root).or_else(|_| initialize_state(artifact_root))?;
+        let loop_mono_ns = monotonic_now_ns();
+        recorder_accounting.record_control_iteration(loop_mono_ns);
         let Some(profile_id) = state.active_profile.clone() else {
             if !summary_quality
                 .notes
@@ -324,12 +338,14 @@ pub fn run_service_for(
                     .notes
                     .push("daemon service loop ran without an active profile".to_string());
             }
-            sleep_until_next(deadline, Duration::from_millis(50));
+            sleep_until_next(deadline, control_interval);
             continue;
         };
 
         let profile = load_profile(profile_dir, &profile_id)?;
         let profile_changed = recorder_profile_id.as_deref() != Some(profile_id.as_str());
+        let semantic_interval_ms =
+            pressure_safe_semantic_sample_interval_ms(&profile, &recorder_budget);
         if profile_changed {
             let mut expected_signals = recorder_expected_signals_for_collectors(
                 &profile.always_on.collectors,
@@ -340,6 +356,14 @@ pub fn run_service_for(
                     &signal.signal_id,
                     power_mode,
                     &mut signal.data_quality,
+                );
+                annotate_expected_signal_for_pressure_safe_scheduler(
+                    signal,
+                    effective_interval_ms_for_signal(
+                        &signal.signal_id,
+                        signal.configured_interval_ms,
+                        semantic_interval_ms,
+                    ),
                 );
             }
             recorder_ring = RecorderRing::with_expected_signal_model(
@@ -353,21 +377,44 @@ pub fn run_service_for(
             trigger_state = TriggerRuntimeState::default();
             materialized_trigger_decisions.clear();
             recorder_profile_id = Some(profile_id.clone());
+            next_semantic_sample_at = None;
+            last_kmsg_event_key = None;
         }
-        let resource_profile = profile_for_resource_policy(&profile, power_mode);
-        let sample = collect_live_sample(&resource_profile);
-        recorder_accounting.observe_sample_time(sample.time_mono_ns);
-        if recorder_sample_rate.should_record(sample.time_mono_ns) {
-            recorder_accounting.record_accepted_sample();
-            push_recorder_samples(&mut recorder_ring, &sample);
-        } else {
-            recorder_accounting.record_skipped_sample();
-            recorder_ring.record_throttled_sample(format!(
-                "recorder downsampled profile samples to max_samples_per_second={}",
-                recorder_budget.max_samples_per_second
-            ));
+        let mut sample_for_triggers = None;
+        let mut status_time_mono_ns = loop_mono_ns;
+        if next_semantic_sample_at.is_none_or(|due_at| Instant::now() >= due_at) {
+            let resource_profile = semantic_profile_for_resource_policy(&profile, power_mode);
+            let sample = collect_live_sample(&resource_profile);
+            status_time_mono_ns = sample.time_mono_ns;
+            if sample_has_recorder_signals(&sample) {
+                recorder_accounting.observe_sample_time(sample.time_mono_ns);
+                if recorder_sample_rate.should_record(sample.time_mono_ns) {
+                    if push_recorder_samples(&mut recorder_ring, &sample) {
+                        recorder_accounting.record_accepted_sample();
+                    }
+                } else {
+                    recorder_accounting.record_skipped_sample();
+                    recorder_ring.record_throttled_sample(format!(
+                        "recorder downsampled profile samples to max_samples_per_second={}",
+                        recorder_budget.max_samples_per_second
+                    ));
+                }
+                sample_for_triggers = Some(sample);
+            }
+            next_semantic_sample_at =
+                Some(Instant::now() + Duration::from_millis(semantic_interval_ms));
         }
-        if recorder_status_writer.should_write(sample.time_mono_ns, profile_changed) {
+        if let Some(kmsg_sample) =
+            collect_kmsg_event_sample(&profile, power_mode, &mut last_kmsg_event_key)
+        {
+            status_time_mono_ns = kmsg_sample.time_mono_ns;
+            recorder_accounting.observe_sample_time(kmsg_sample.time_mono_ns);
+            if push_recorder_samples(&mut recorder_ring, &kmsg_sample) {
+                recorder_accounting.record_accepted_sample();
+            }
+            sample_for_triggers = Some(kmsg_sample);
+        }
+        if recorder_status_writer.should_write(status_time_mono_ns, profile_changed) {
             let status_bytes = write_live_recorder_status(LiveRecorderStatusInput {
                 artifact_root,
                 active_profile: Some(&profile_id),
@@ -417,7 +464,7 @@ pub fn run_service_for(
             let result_path = write_recorder_marker_result(artifact_root, &result)?;
             recorder_accounting.record_marker_result_write(file_len(&result_path)?);
             frozen_incidents.push(incident_id);
-            if recorder_status_writer.should_write(sample.time_mono_ns, true) {
+            if recorder_status_writer.should_write(status_time_mono_ns, true) {
                 let status_bytes = write_live_recorder_status(LiveRecorderStatusInput {
                     artifact_root,
                     active_profile: Some(&profile_id),
@@ -433,106 +480,102 @@ pub fn run_service_for(
                 recorder_accounting.record_status_write(status_bytes);
             }
         }
-        if let Some(outcome) = evaluate_live_triggers(
-            &profile,
-            previous_sample.as_ref(),
-            &sample,
-            &recorder_ring,
-            &recorder_budget,
-            &mut trigger_state,
-        )? {
-            let matched = match outcome {
-                LiveTriggerOutcome::Fired(matched) => *matched,
-                LiveTriggerOutcome::MaterialDecision(decision) => {
-                    if materialized_trigger_decisions.insert(decision.decision_id.clone()) {
-                        write_recorder_trigger_decision(artifact_root, decision.as_ref())?;
-                    }
-                    previous_sample = Some(sample);
-                    sleep_until_next(
-                        deadline,
-                        Duration::from_millis(profile.sampling.interval_ms),
-                    );
-                    continue;
-                }
-            };
-            let run_id = next_daemon_run_id();
-            create_trigger_bundle(artifact_root, &run_id, &profile, &sample, &matched)?;
-            let incident_id = format!("INC-TRIGGER-{}", sample.time_mono_ns);
-            let _admission_lock = acquire_recorder_admission_lock(artifact_root)?;
-            let budget_status = recorder_incident_budget_status(
-                artifact_root,
+        if let Some(sample) = sample_for_triggers {
+            if let Some(outcome) = evaluate_live_triggers(
+                &profile,
+                previous_sample.as_ref(),
+                &sample,
+                &recorder_ring,
                 &recorder_budget,
-                frozen_incidents.len() as u64,
-            );
-            if !recorder_freeze_budget_exhausted(&budget_status, &mut summary_quality) {
-                let coverage_ref =
-                    format!("artifact://recorder/incidents/{incident_id}/coverage.json");
-                let trigger_event_ref =
-                    format!("artifact://recorder/incidents/{incident_id}/trigger_event.json");
-                let mut trigger_decision = matched.decision.clone();
-                trigger_decision.coverage_ref = Some(coverage_ref);
-                trigger_decision.incident_id = Some(incident_id.clone());
-                trigger_decision.trigger_event_ref = Some(trigger_event_ref);
-                trigger_decision.budget_decision = crate::TriggerBudgetDecision::Accepted;
-                let freeze = freeze_recorder_trigger_with_decision(
+                &mut trigger_state,
+            )? {
+                let matched = match outcome {
+                    LiveTriggerOutcome::Fired(matched) => *matched,
+                    LiveTriggerOutcome::MaterialDecision(decision) => {
+                        if materialized_trigger_decisions.insert(decision.decision_id.clone()) {
+                            write_recorder_trigger_decision(artifact_root, decision.as_ref())?;
+                        }
+                        previous_sample = Some(sample);
+                        sleep_until_next(deadline, control_interval);
+                        continue;
+                    }
+                };
+                let run_id = next_daemon_run_id();
+                create_trigger_bundle(artifact_root, &run_id, &profile, &sample, &matched)?;
+                let incident_id = format!("INC-TRIGGER-{}", sample.time_mono_ns);
+                let _admission_lock = acquire_recorder_admission_lock(artifact_root)?;
+                let budget_status = recorder_incident_budget_status(
                     artifact_root,
-                    crate::RecorderTriggerFreezeRequest {
-                        incident_id: &incident_id,
-                        window_id: "win-trigger-001",
-                        trigger_name: &matched.evaluation.trigger_name,
-                        trigger_time_mono_ns: sample.time_mono_ns,
-                        trigger_decision: Some(trigger_decision),
-                    },
-                    &recorder_ring,
                     &recorder_budget,
-                )?;
-                let (artifact_bytes, samples_jsonl_bytes) =
-                    recorder_incident_byte_counts(&freeze.run_dir)?;
-                recorder_accounting.record_frozen_incident(artifact_bytes, samples_jsonl_bytes);
-                frozen_incidents.push(incident_id);
-                if recorder_status_writer.should_write(sample.time_mono_ns, true) {
-                    let status_bytes = write_live_recorder_status(LiveRecorderStatusInput {
+                    frozen_incidents.len() as u64,
+                );
+                if !recorder_freeze_budget_exhausted(&budget_status, &mut summary_quality) {
+                    let coverage_ref =
+                        format!("artifact://recorder/incidents/{incident_id}/coverage.json");
+                    let trigger_event_ref =
+                        format!("artifact://recorder/incidents/{incident_id}/trigger_event.json");
+                    let mut trigger_decision = matched.decision.clone();
+                    trigger_decision.coverage_ref = Some(coverage_ref);
+                    trigger_decision.incident_id = Some(incident_id.clone());
+                    trigger_decision.trigger_event_ref = Some(trigger_event_ref);
+                    trigger_decision.budget_decision = crate::TriggerBudgetDecision::Accepted;
+                    let freeze = freeze_recorder_trigger_with_decision(
                         artifact_root,
-                        active_profile: Some(&profile_id),
-                        previous_state: Some("freezing"),
-                        recorder_state: "recording",
-                        ring: &recorder_ring,
-                        budget: &recorder_budget,
-                        accounting: &recorder_accounting,
-                        power_snapshot: power_snapshot.clone(),
-                        power_mode,
-                        degradation_decisions: degradation_decisions.clone(),
-                    })?;
-                    recorder_accounting.record_status_write(status_bytes);
+                        crate::RecorderTriggerFreezeRequest {
+                            incident_id: &incident_id,
+                            window_id: "win-trigger-001",
+                            trigger_name: &matched.evaluation.trigger_name,
+                            trigger_time_mono_ns: sample.time_mono_ns,
+                            trigger_decision: Some(trigger_decision),
+                        },
+                        &recorder_ring,
+                        &recorder_budget,
+                    )?;
+                    let (artifact_bytes, samples_jsonl_bytes) =
+                        recorder_incident_byte_counts(&freeze.run_dir)?;
+                    recorder_accounting.record_frozen_incident(artifact_bytes, samples_jsonl_bytes);
+                    frozen_incidents.push(incident_id);
+                    if recorder_status_writer.should_write(sample.time_mono_ns, true) {
+                        let status_bytes = write_live_recorder_status(LiveRecorderStatusInput {
+                            artifact_root,
+                            active_profile: Some(&profile_id),
+                            previous_state: Some("freezing"),
+                            recorder_state: "recording",
+                            ring: &recorder_ring,
+                            budget: &recorder_budget,
+                            accounting: &recorder_accounting,
+                            power_snapshot: power_snapshot.clone(),
+                            power_mode,
+                            degradation_decisions: degradation_decisions.clone(),
+                        })?;
+                        recorder_accounting.record_status_write(status_bytes);
+                    }
+                } else {
+                    let decision = recorder_freeze_decision_for_refused_trigger(budget_status);
+                    write_json(
+                        &artifact_root
+                            .join("runs")
+                            .join(&run_id)
+                            .join("recorder_freeze_decision.json"),
+                        &decision,
+                    )?;
+                    let trigger_decision = trigger_decision_for_budget_refusal(
+                        "default-symptom-trigger-policy",
+                        &matched.rule,
+                        Some(&matched.input),
+                        Some(&matched.coverage),
+                        None,
+                        &decision.budget_status,
+                    )?;
+                    write_recorder_trigger_decision(artifact_root, &trigger_decision)?;
                 }
-            } else {
-                let decision = recorder_freeze_decision_for_refused_trigger(budget_status);
-                write_json(
-                    &artifact_root
-                        .join("runs")
-                        .join(&run_id)
-                        .join("recorder_freeze_decision.json"),
-                    &decision,
-                )?;
-                let trigger_decision = trigger_decision_for_budget_refusal(
-                    "default-symptom-trigger-policy",
-                    &matched.rule,
-                    Some(&matched.input),
-                    Some(&matched.coverage),
-                    None,
-                    &decision.budget_status,
-                )?;
-                write_recorder_trigger_decision(artifact_root, &trigger_decision)?;
+                record_run(artifact_root, &run_id)?;
+                captured_runs.push(run_id);
+                break;
             }
-            record_run(artifact_root, &run_id)?;
-            captured_runs.push(run_id);
-            break;
+            previous_sample = Some(sample);
         }
-        previous_sample = Some(sample);
-        sleep_until_next(
-            deadline,
-            Duration::from_millis(profile.sampling.interval_ms),
-        );
+        sleep_until_next(deadline, control_interval);
     }
 
     let state = initialize_state(artifact_root)?;
@@ -703,6 +746,104 @@ fn profile_for_resource_policy(profile: &Profile, mode: RecorderPowerMode) -> Pr
         .collectors
         .retain(|collector| collector_enabled_by_power_mode(collector, mode));
     adjusted
+}
+
+fn semantic_profile_for_resource_policy(profile: &Profile, mode: RecorderPowerMode) -> Profile {
+    let mut adjusted = profile_for_resource_policy(profile, mode);
+    adjusted
+        .always_on
+        .collectors
+        .retain(|collector| collector != "kmsg");
+    adjusted
+}
+
+fn kmsg_profile_for_resource_policy(profile: &Profile, mode: RecorderPowerMode) -> Profile {
+    let mut adjusted = profile_for_resource_policy(profile, mode);
+    adjusted
+        .always_on
+        .collectors
+        .retain(|collector| collector == "kmsg");
+    adjusted
+}
+
+fn collect_kmsg_event_sample(
+    profile: &Profile,
+    mode: RecorderPowerMode,
+    last_event_key: &mut Option<String>,
+) -> Option<LiveSample> {
+    let kmsg_profile = kmsg_profile_for_resource_policy(profile, mode);
+    if !kmsg_profile
+        .always_on
+        .collectors
+        .iter()
+        .any(|collector| collector == "kmsg")
+    {
+        return None;
+    }
+    let sample = collect_live_sample(&kmsg_profile);
+    let key = sample.kmsg.as_ref().map(kmsg_event_key)?;
+    if last_event_key.as_deref() == Some(key.as_str()) {
+        return None;
+    }
+    *last_event_key = Some(key);
+    Some(sample)
+}
+
+fn kmsg_event_key(sample: &KmsgSample) -> String {
+    format!("{}:{}:{}", sample.source, sample.severity, sample.message)
+}
+
+fn sample_has_recorder_signals(sample: &LiveSample) -> bool {
+    sample.cpu.is_some()
+        || sample.memory.is_some()
+        || sample.network.is_some()
+        || sample.kmsg.is_some()
+}
+
+fn pressure_safe_semantic_sample_interval_ms(
+    profile: &Profile,
+    budget: &crate::RecorderBudget,
+) -> u64 {
+    profile
+        .sampling
+        .interval_ms
+        .max(RECORDER_PRESSURE_SAFE_SEMANTIC_SAMPLE_FLOOR_MS)
+        .max(effective_recorder_interval_ms_for_budget(
+            budget.max_samples_per_second,
+        ))
+}
+
+fn effective_interval_ms_for_signal(
+    signal_id: &str,
+    configured_interval_ms: u64,
+    semantic_interval_ms: u64,
+) -> u64 {
+    if signal_id == "kmsg.cursor" {
+        configured_interval_ms.max(RECORDER_CONTROL_TICK_MS)
+    } else {
+        semantic_interval_ms
+    }
+}
+
+fn effective_recorder_interval_ms_for_budget(max_samples_per_second: u64) -> u64 {
+    1000_u64.saturating_add(max_samples_per_second.saturating_sub(1))
+        / max_samples_per_second.max(1)
+}
+
+fn annotate_expected_signal_for_pressure_safe_scheduler(
+    signal: &mut RecorderExpectedSignal,
+    effective_interval_ms: u64,
+) {
+    signal.effective_interval_ms = signal
+        .effective_interval_ms
+        .max(effective_interval_ms.max(1));
+    if signal.effective_interval_ms > signal.configured_interval_ms {
+        signal.data_quality.throttled = true;
+        signal.data_quality.notes.push(format!(
+            "pressure-safe scheduler clamped {} from configured_interval_ms={} to effective_interval_ms={}",
+            signal.signal_id, signal.configured_interval_ms, signal.effective_interval_ms
+        ));
+    }
 }
 
 fn collect_proc_sample<T>(
@@ -908,6 +1049,17 @@ fn trigger_coverage_for_rule(
         .iter()
         .find(|signal| signal.signal_id == coverage_signal_id)
     {
+        let expected_signal = recorder_ring.expected_signal(&coverage_signal_id);
+        let effective_interval_ms = signal
+            .configured_interval_ms
+            .max(
+                expected_signal
+                    .map(|signal| signal.effective_interval_ms)
+                    .unwrap_or(signal.configured_interval_ms),
+            )
+            .max(effective_recorder_interval_ms_for_budget(
+                recorder_budget.max_samples_per_second,
+            ));
         let coverage_state = if signal.recorded_samples > 0 {
             if signal.data_quality.throttled || signal.dropped_samples > 0 {
                 RecorderCoverageState::Partial
@@ -923,10 +1075,7 @@ fn trigger_coverage_for_rule(
             coverage_state,
             coverage_confidence: RecorderCoverageConfidence::Medium,
             configured_interval_ms: signal.configured_interval_ms,
-            effective_interval_ms: signal.configured_interval_ms.max(
-                1000_u64.saturating_add(recorder_budget.max_samples_per_second.saturating_sub(1))
-                    / recorder_budget.max_samples_per_second.max(1),
-            ),
+            effective_interval_ms,
             expected_samples_configured: signal.expected_samples,
             expected_samples_budgeted: signal.expected_samples,
             expected_samples: signal.expected_samples,
@@ -981,7 +1130,7 @@ fn network_total_bytes(sample: &NetworkDeviceSample) -> u64 {
         .sum()
 }
 
-fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) {
+fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) -> bool {
     let mut signals = Vec::new();
     if let Some(cpu) = &sample.cpu {
         signals.push(RecorderSignalSample {
@@ -1013,12 +1162,13 @@ fn push_recorder_samples(ring: &mut RecorderRing, sample: &LiveSample) {
         });
     }
     if signals.is_empty() {
-        return;
+        return false;
     }
     ring.push(RecorderSample {
         time_mono_ns: sample.time_mono_ns,
         signals,
     });
+    true
 }
 
 fn recorder_freeze_budget_exhausted(
