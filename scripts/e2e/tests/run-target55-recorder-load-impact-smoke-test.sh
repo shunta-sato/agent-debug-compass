@@ -6,6 +6,14 @@ RUNNER="$ROOT_DIR/scripts/e2e/target/run-target55-recorder-load-impact-smoke.sh"
 
 "$RUNNER" --help >/tmp/adc-target55-load-impact-help.txt
 grep -q "load-impact" /tmp/adc-target55-load-impact-help.txt
+grep -q -- "--profile-interval-ms" /tmp/adc-target55-load-impact-help.txt
+grep -q -- "--evaluation-mode" /tmp/adc-target55-load-impact-help.txt
+grep -q "production_safe" /tmp/adc-target55-load-impact-help.txt
+grep -q "high_frequency_stress" /tmp/adc-target55-load-impact-help.txt
+grep -q "deployability" /tmp/adc-target55-load-impact-help.txt
+grep -q "deployability_passed" "$RUNNER"
+grep -q "resource_violation" "$RUNNER"
+grep -q "max_production_adc_targetd_cpu_ratio" "$RUNNER"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT

@@ -91,7 +91,13 @@ checks no-trigger continuous ring write behavior, simulated battery-low
 degradation, marker freeze resource accounting, and bounded recorder refs on a
 configured same-LAN target. The target55 load-impact smoke adds explicit
 CPU+memory workload comparison and reports workload slowdown, `adc-targetd` CPU
-seconds, peak RSS, and recorder write categories.
+seconds/ratio, peak RSS, recorder write categories, `deployability_passed`, and
+`resource_violation`.
+
+The default target55 load-impact smoke is production-safe deployability
+evidence. Use `--evaluation-mode high_frequency_stress --profile-interval-ms 10`
+only to record aggressive-profile resource impact; stress findings are not
+production-safe evidence.
 
 ## Where to Add New Tests
 
